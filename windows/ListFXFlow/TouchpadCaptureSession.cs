@@ -1,0 +1,122 @@
+using System.Runtime.Versioning;
+using System.Windows.Threading;
+using Windows.Foundation.Metadata;
+using Windows.UI.Core;
+using Windows.UI.Input;
+
+namespace ListFXFlow;
+
+/// Windows SDK projections own all WinRT ABI/event marshalling. This class owns
+/// one capture lifetime in the isolated STA worker; no window enumeration,
+/// subclassing, handcrafted delegate IIDs, or COM function-table calls.
+[SupportedOSPlatform("windows10.0.26100.0")]
+internal sealed class TouchpadCaptureSession : IDisposable {
+    private readonly Dispatcher dispatcher;
+    private readonly TouchpadInputWindow window;
+    private readonly NativeTouchpadCapture twoFinger=new();
+    private readonly TouchpadContactBatch batch=new();
+    private readonly TouchpadGesturesController controller;
+    private readonly Action<TouchpadContact[]> contacts;
+    private readonly Action<string> warning;
+    private readonly Action<string> activity;
+    private readonly bool suppressOnly;
+    private bool active,disposed,flushQueued;
+    private long generation;
+    private string? readFailure;
+    private long lastWarning;
+    private const TouchpadGlobalGestureKinds All=(TouchpadGlobalGestureKinds)0x3f;
+    internal bool Armed=>active && window.Foreground && controller.Enabled && (controller.SupportedGestures&All)==All;
+    internal bool Active=>active;
+    internal string ForegroundDescription=>window.ForegroundDescription;
+    internal TouchpadCaptureSession(Dispatcher dispatcher,Action<TouchpadContact[]> contacts,Action<string> warning,Action<string> activity,bool suppressOnly=false) {
+        this.dispatcher=dispatcher;this.contacts=contacts;this.warning=warning;this.activity=activity;
+        this.suppressOnly=suppressOnly;
+        TouchpadDiagnostics.Write("worker","SDK capture: checking API availability");
+        if(!ApiInformation.IsTypePresent("Windows.UI.Input.TouchpadGesturesController") || !TouchpadGesturesController.IsSupported())throw new NotSupportedException("此 Windows 未提供原生触控板接管 API。");
+        controller=TouchpadGesturesController.CreateForProcess();
+        TouchpadDiagnostics.Write("worker","SDK capture: controller created");
+        try {
+            controller.PointerPressed+=OnPoint;controller.PointerMoved+=OnPoint;controller.PointerReleased+=OnPoint;
+            controller.GlobalActionPerformed+=OnAction;
+            controller.SupportedGestures=All;controller.Enabled=false;
+            window=new() { Pointer=suppressOnly ? null:ReadTwoFinger,Cancel=suppressOnly ? null:CancelContacts,ConsumePointers=suppressOnly };
+            TouchpadDiagnostics.Write("worker","SDK capture: typed subscriptions and dedicated input window ready");
+        } catch {
+            try { controller.Enabled=false; } finally { Unsubscribe(); }
+            throw;
+        }
+    }
+    internal void PrepareAcquire() {
+        ObjectDisposedException.ThrowIf(disposed,this);
+        active=false;controller.Enabled=false;batch.Reset();twoFinger.Reset();generation++;flushQueued=false;
+        if(!suppressOnly)twoFinger.Prepare();window.Prepare();
+    }
+    internal bool TryAcquire() {
+        ObjectDisposedException.ThrowIf(disposed,this);
+        if(Armed)return true;
+        if(!window.TryAcquire())return false;
+        return ConfirmAcquire();
+    }
+    internal bool ConfirmAcquire() {
+        if(Armed)return true;
+        if(!window.Confirm())return false;
+        controller.Enabled=true;
+        if(!controller.Enabled || (controller.SupportedGestures&All)!=All)throw new InvalidOperationException("原生触控板控制器未保持启用状态或手势范围。");
+        active=true;readFailure=null;
+        TouchpadDiagnostics.Write("worker",$"SDK capture armed; foreground={window.Foreground}; enabled={controller.Enabled}; supported={controller.SupportedGestures}");
+        return true;
+    }
+    private bool CanRead()=>active && !disposed && window.Foreground;
+    private void OnPoint(TouchpadGesturesController sender,PointerEventArgs args) {
+        if(suppressOnly) { args.Handled=true;return; } // No contact reads or forwarding.
+        if(!CanRead())return;
+        try {
+            var point=args.CurrentPoint;var p=point.Properties;
+            if(!point.IsPhysicalPositionSupported)throw new NotSupportedException("系统未提供触点的设备坐标。");
+            var position=point.PhysicalPosition;var bounds=point.PointerDevice.PhysicalDeviceRect;
+            if(bounds.Width<=0 || bounds.Height<=0)throw new InvalidOperationException("触控板物理尺寸无效。");
+            var previous=batch.Push(new(point.PointerId,point.FrameId,point.IsInContact && p.TouchConfidence,p.IsCanceled,
+                (position.X-bounds.X)/bounds.Width,(position.Y-bounds.Y)/bounds.Height));
+            if(previous!=null)Deliver(previous);
+            if(!flushQueued) {
+                flushQueued=true;long token=generation;
+                dispatcher.BeginInvoke(DispatcherPriority.Background,new Action(()=> {
+                    if(token!=generation)return;flushQueued=false;
+                    if(CanRead() && batch.Flush() is {} frame)Deliver(frame);
+                }));
+            }
+        } catch(Exception error) when(error is not AccessViolationException) { ReadFailed("SDK PointerPoint",error); }
+    }
+    private void OnAction(TouchpadGesturesController sender,TouchpadGlobalActionEventArgs args) {
+        if(suppressOnly)return;
+        if(CanRead())activity("已捕获本机多指动作 · "+args.Action);
+    }
+    private void ReadTwoFinger(uint id) {
+        if(!CanRead())return;
+        try { if(twoFinger.Read(id,"two-finger input window") is {} frame)Deliver(frame); }
+        catch(Exception error) when(error is not AccessViolationException) { ReadFailed("双指触点",error); }
+    }
+    private void Deliver(TouchpadContact[] frame) {
+        if(readFailure!=null) { readFailure=null;activity("触点读取已恢复"); }
+        contacts(frame);
+    }
+    private void ReadFailed(string stage,Exception error) {
+        string message=stage+"："+error.Message;long now=Environment.TickCount64;
+        batch.Reset();twoFinger.Reset();contacts([]);
+        if(readFailure!=message || now-lastWarning>=2000) {
+            readFailure=message;lastWarning=now;warning(message);
+        }
+    }
+    private void CancelContacts() { batch.Reset();twoFinger.Reset();if(active)contacts([]); }
+    internal void Release() {
+        active=false;generation++;flushQueued=false;batch.Reset();twoFinger.Reset();
+        try { controller.Enabled=false; } finally { window?.Release(); }
+    }
+    public void Dispose() {
+        if(disposed)return;disposed=true;
+        try { Release(); } finally { try { Unsubscribe(); } finally { window?.Dispose(); } }
+    }
+    private void Unsubscribe() {
+        controller.PointerPressed-=OnPoint;controller.PointerMoved-=OnPoint;controller.PointerReleased-=OnPoint;controller.GlobalActionPerformed-=OnAction;
+    }
+}

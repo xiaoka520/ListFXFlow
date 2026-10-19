@@ -1,0 +1,30 @@
+name: Build and verify
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  mac:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+      - run: zsh scripts/build-mac.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ListFXFlow-Mac
+          path: |
+            artifacts/ListFXFlow-Mac-*.dmg
+            artifacts/ListFXFlow-Mac-*.zip
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project windows/FlowCore.Tests/FlowCore.Tests.csproj -c Release
+      - run: ./scripts/build-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ListFXFlow-Windows
+          path: |
+            artifacts/ListFXFlow-Setup-*.exe
+            artifacts/ListFXFlow-Windows-*.zip

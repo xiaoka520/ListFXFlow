@@ -1,0 +1,90 @@
+using System.Runtime.InteropServices;
+
+namespace ListFXFlow;
+
+/// Reads the standard Precision Touchpad HID collection without changing device
+/// mode, driver settings, registry, or foreground application. Descriptors are
+/// cached per device. Parallel and hybrid contact reports are assembled by scan.
+internal sealed class PrecisionTouchpad : IDisposable {
+    private const uint Success=0x00110000;
+    private readonly Dictionary<nint,Device?> devices=[];
+    internal Action<TouchpadContact[]>? OnFrame;
+    [StructLayout(LayoutKind.Explicit,Size=64)] private struct Caps {
+        [FieldOffset(0)] public ushort Usage;
+        [FieldOffset(2)] public ushort Page;
+        [FieldOffset(48)] public ushort ValueCount;
+    }
+    [StructLayout(LayoutKind.Explicit,Size=72)] private struct ValueCap {
+        [FieldOffset(0)] public ushort Page;
+        [FieldOffset(2)] public byte Report;
+        [FieldOffset(6)] public ushort Link;
+        [FieldOffset(12)] public byte IsRange;
+        [FieldOffset(40)] public int Minimum;
+        [FieldOffset(44)] public int Maximum;
+        [FieldOffset(56)] public ushort Usage;
+        [FieldOffset(58)] public ushort UsageMax;
+    }
+    [DllImport("user32.dll",EntryPoint="GetRawInputData",SetLastError=true)] private static extern uint ReadRaw(nint input,uint command,nint data,ref uint size,uint headerSize);
+    [DllImport("user32.dll",EntryPoint="GetRawInputDeviceInfoW",SetLastError=true)] private static extern uint DeviceInfo(nint device,uint command,nint data,ref uint size);
+    [DllImport("hid.dll")] private static extern uint HidP_GetCaps(nint data,out Caps caps);
+    [DllImport("hid.dll")] private static extern uint HidP_GetValueCaps(int type,[Out] ValueCap[] caps,ref ushort count,nint data);
+    [DllImport("hid.dll")] private static extern uint HidP_GetUsageValue(int type,ushort page,ushort link,ushort usage,out uint value,nint data,nint report,uint size);
+    [DllImport("hid.dll")] private static extern uint HidP_GetUsages(int type,ushort page,ushort link,[Out] ushort[] usages,ref uint count,nint data,nint report,uint size);
+    private sealed class Device : IDisposable {
+        internal nint Data;
+        internal ValueCap[] Values=[];
+        internal int Expected;
+        internal uint Scan;
+        internal readonly Dictionary<int,(TouchpadContact Contact,bool Active)> Frame=[];
+        public void Dispose() { if(Data!=0)Marshal.FreeHGlobal(Data);Data=0; }
+    }
+    private static Device? Open(nint handle) {
+        uint size=0;
+        if(DeviceInfo(handle,0x20000005,0,ref size)!=0 || size is 0 or >65536)return null;
+        var d=new Device { Data=Marshal.AllocHGlobal((int)size) };
+        if(DeviceInfo(handle,0x20000005,d.Data,ref size)!=size || HidP_GetCaps(d.Data,out var caps)!=Success || caps.Page!=0x0d || caps.Usage!=5 || caps.ValueCount is 0 or >256) { d.Dispose();return null; }
+        ushort count=caps.ValueCount;d.Values=new ValueCap[count];
+        if(HidP_GetValueCaps(0,d.Values,ref count,d.Data)!=Success) { d.Dispose();return null; }
+        return d;
+    }
+    internal void Read(nint input) {
+        uint size=0,headerSize=(uint)Marshal.SizeOf<Native.RawInputHeader>();
+        if(ReadRaw(input,0x10000003,0,ref size,headerSize)!=0 || size<headerSize+8 || size>65536)return;
+        nint bytes=Marshal.AllocHGlobal((int)size);
+        try {
+            if(ReadRaw(input,0x10000003,bytes,ref size,headerSize)!=size)return;
+            var header=Marshal.PtrToStructure<Native.RawInputHeader>(bytes);
+            if(header.Type!=2)return;
+            if(!devices.TryGetValue(header.Device,out var d)) { if(devices.Count>=16)return;devices[header.Device]=d=Open(header.Device); }
+            if(d==null)return;
+            uint length=unchecked((uint)Marshal.ReadInt32(bytes,(int)headerSize)),count=unchecked((uint)Marshal.ReadInt32(bytes,(int)headerSize+4));
+            if(length==0 || count==0 || (ulong)length*count>size-headerSize-8)return;
+            for(int i=0;i<count;i++) Parse(d,bytes+(int)headerSize+8+(int)(length*i),length);
+        } finally { Marshal.FreeHGlobal(bytes); }
+    }
+    private void Parse(Device d,nint report,uint length) {
+        bool Value(ushort page,ushort link,ushort usage,out uint value)=>HidP_GetUsageValue(0,page,link,usage,out value,d.Data,report,length)==Success;
+        if(!Value(0x0d,0,0x54,out uint count) || count>5 || !Value(0x0d,0,0x56,out uint scan))return;
+        if(count>0) { d.Expected=(int)count;d.Scan=scan;d.Frame.Clear(); }
+        else if(d.Expected==0 || d.Scan!=scan) { d.Expected=0;d.Frame.Clear();OnFrame?.Invoke([]);return; }
+        var links=d.Values.Where(v=>v.Page==0x0d && v.Link!=0 && (v.Usage==0x51 || v.IsRange!=0 && v.Usage<=0x51 && v.UsageMax>=0x51)).Select(v=>v.Link).Distinct();
+        foreach(ushort link in links) {
+            if(d.Frame.Count>=d.Expected)break;
+            if(!Value(0x0d,link,0x51,out uint id) || id>65535 || !Value(1,link,0x30,out uint x) || !Value(1,link,0x31,out uint y))continue;
+            var xc=d.Values.FirstOrDefault(v=>v.Link==link && v.Page==1 && v.Usage<=0x30 && (v.Usage==0x30 || v.IsRange!=0 && v.UsageMax>=0x30));
+            var yc=d.Values.FirstOrDefault(v=>v.Link==link && v.Page==1 && v.Usage<=0x31 && (v.Usage==0x31 || v.IsRange!=0 && v.UsageMax>=0x31));
+            if(xc.Maximum<=xc.Minimum || yc.Maximum<=yc.Minimum)continue;
+            ushort[] usages=new ushort[32];uint n=32;
+            if(HidP_GetUsages(0,0x0d,link,usages,ref n,d.Data,report,length)!=Success || n>32)continue;
+            bool active=usages.Take((int)n).Contains((ushort)0x42) && usages.Take((int)n).Contains((ushort)0x47);
+            var p=new TouchpadContact((int)id,Math.Clamp((x-xc.Minimum)/(double)(xc.Maximum-xc.Minimum),0,1),Math.Clamp((y-yc.Minimum)/(double)(yc.Maximum-yc.Minimum),0,1));
+            d.Frame[(int)id]=(p,active);
+        }
+        if(d.Expected>0 && d.Frame.Count>=d.Expected) {
+            var points=d.Frame.Values.Where(p=>p.Active).Select(p=>p.Contact).OrderBy(p=>p.Id).ToArray();
+            d.Expected=0;d.Frame.Clear();OnFrame?.Invoke(points);
+        }
+    }
+    internal void Removed(nint handle) { if(devices.Remove(handle,out var d))d?.Dispose();OnFrame?.Invoke([]); }
+    public void Dispose() { foreach(var d in devices.Values)d?.Dispose();devices.Clear(); }
+}

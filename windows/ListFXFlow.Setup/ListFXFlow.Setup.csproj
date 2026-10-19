@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AssemblyName>ListFXFlow.Setup</AssemblyName><Version>0.2.3</Version>
+    <ApplicationManifest>app.manifest</ApplicationManifest><ApplicationIcon>../../assets/FlowIcon.ico</ApplicationIcon>
+    <PayloadPath Condition="'$(PayloadPath)'==''">../../artifacts/Packaging/payload.zip</PayloadPath>
+    <PayloadManifestPath Condition="'$(PayloadManifestPath)'==''">../../artifacts/Packaging/payload.json</PayloadManifestPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Packaging/LegacyLoginRemoval.cs" Link="LegacyLoginRemoval.cs" />
+    <Compile Include="../ListFXFlow/FlowIcon.cs" Link="FlowIcon.cs"/><Compile Include="../Packaging/InstallPaths.cs" Link="InstallPaths.cs"/>
+    <EmbeddedResource Include="$(PayloadPath)" LogicalName="ListFXFlow.Payload.zip"/><EmbeddedResource Include="$(PayloadManifestPath)" LogicalName="ListFXFlow.Payload.json"/>
+  </ItemGroup>
+</Project>

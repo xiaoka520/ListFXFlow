@@ -1,0 +1,15 @@
+#!/bin/zsh
+set -euo pipefail
+SUPPORT="/Library/Application Support/ListFXFlow/LoginSupport"
+UID_NUMBER="$(stat -f '%u' /dev/console)"
+codesign --verify --deep --strict "$SUPPORT/ListFXFlow.app"
+"$SUPPORT/ListFXFlow.app/Contents/MacOS/ListFXFlow" --provision-login-support "$UID_NUMBER"
+chown -R root:wheel "$SUPPORT"
+chmod 755 "$SUPPORT"
+chmod 700 "$SUPPORT/Private"
+chmod 600 "$SUPPORT/Private/connection.json"
+/usr/libexec/PlistBuddy -c "Set :ProgramArguments:3 $UID_NUMBER" /Library/LaunchAgents/com.listfxflow.autostart.plist
+chown root:wheel /Library/LaunchAgents/com.listfxflow.autostart.plist
+chmod 644 /Library/LaunchAgents/com.listfxflow.autostart.plist
+launchctl bootstrap "gui/$UID_NUMBER" /Library/LaunchAgents/com.listfxflow.autostart.plist 2>/dev/null || true
+exit 0

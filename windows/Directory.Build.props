@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <FlowVersion>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../VERSION').Trim())</FlowVersion>
+    <FlowBuild>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../BUILD').Trim())</FlowBuild>
+    <FileVersion>$(FlowVersion).$(FlowBuild)</FileVersion>
+    <AssemblyVersion>$(FlowVersion).0</AssemblyVersion>
+    <InformationalVersion>$(FlowVersion)+build.$(FlowBuild)</InformationalVersion>
+  </PropertyGroup>
+</Project>

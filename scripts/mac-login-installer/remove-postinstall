@@ -1,0 +1,5 @@
+#!/bin/zsh
+set -euo pipefail
+SCRIPT='/Library/Application Support/ListFXFlow/LoginSupport/uninstall.sh'
+[[ ! -f "$SCRIPT" ]] || /bin/zsh "$SCRIPT"
+exit 0

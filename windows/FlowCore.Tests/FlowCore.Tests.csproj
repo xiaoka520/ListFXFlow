@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../ListFXFlow/ConnectionPreferences.cs" Link="ConnectionPreferences.cs" />
+    <Compile Include="../ListFXFlow/GameProtection.cs" Link="GameProtection.cs" />
+    <Compile Include="../ListFXFlow/TouchpadFocusLease.cs" Link="TouchpadFocusLease.cs" />
+    <Compile Include="../ListFXFlow/TouchpadActivationRetry.cs" Link="TouchpadActivationRetry.cs" />
+    <Compile Include="../ListFXFlow/TouchpadSuppressionPolicy.cs" Link="TouchpadSuppressionPolicy.cs" />
+    <Compile Include="../ListFXFlow/Touchpad.cs" Link="Touchpad.cs" />
+    <Compile Include="../ListFXFlow/TouchpadPointerFrames.cs" Link="TouchpadPointerFrames.cs" />
+    <Compile Include="../ListFXFlow/TouchpadFeedbackCounter.cs" Link="TouchpadFeedbackCounter.cs" />
+    <Compile Include="../ListFXFlow/TouchpadContactBatch.cs" Link="TouchpadContactBatch.cs" />
+    <Compile Include="../ListFXFlow/TouchpadWorkerProtocol.cs" Link="TouchpadWorkerProtocol.cs" />
+    <Compile Include="../ListFXFlow/TouchpadWorkerClient.cs" Link="TouchpadWorkerClient.cs" />
+    <Compile Include="../ListFXFlow/NativeTouchpadInjector.cs" Link="NativeTouchpadInjector.cs" />
+    <Compile Include="../ListFXFlow/Wire.cs" Link="Wire.cs" />
+    <Compile Include="../ListFXFlow/InputMessageQueue.cs" Link="InputMessageQueue.cs" />
+    <Compile Include="../ListFXFlow/RawMouseMotion.cs" Link="RawMouseMotion.cs" />
+    <Compile Include="../ListFXFlow/InjectionWorker.cs" Link="InjectionWorker.cs" />
+    <Compile Include="../ListFXFlow/Native.cs" Link="Native.cs" />
+    <Compile Include="../ListFXFlow/WheelAccumulator.cs" Link="WheelAccumulator.cs" />
+    <Compile Include="../ListFXFlow/WheelTranslator.cs" Link="WheelTranslator.cs" />
+    <Compile Include="../ListFXFlow/ClipboardCore.cs" Link="ClipboardCore.cs" />
+    <Compile Include="../ListFXFlow/ClipboardLink.cs" Link="ClipboardLink.cs" />
+    <Compile Include="../ListFXFlow/Topology.cs" Link="Topology.cs" />
+    <Compile Include="../ListFXFlow/Transport.cs" Link="Transport.cs" />
+    <Compile Include="../ListFXFlow/IdentityStore.cs" Link="IdentityStore.cs" />
+    <EmbeddedResource Include="../../Sources/FlowCore/Resources/keymap.json" Link="keymap.json" />
+  </ItemGroup>
+</Project>

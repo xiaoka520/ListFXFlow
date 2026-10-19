@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <WindowsSdkPackageVersion>10.0.28000.87</WindowsSdkPackageVersion>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- WPF owns DPI through its PerMonitorV2 manifest; Forms is used only for NotifyIcon. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>../../assets/FlowIcon.ico</ApplicationIcon>
+    <AssemblyName>ListFXFlow</AssemblyName>
+    <Version>0.2.3</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Packaging/InstallPaths.cs" Link="InstallPaths.cs" />
+    <Compile Include="../Packaging/LegacyLoginRemoval.cs" Link="LegacyLoginRemoval.cs" />
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <EmbeddedResource Include="../../THIRD_PARTY_NOTICES.txt" Link="THIRD_PARTY_NOTICES.txt" />
+    <EmbeddedResource Include="../../Sources/FlowCore/Resources/keymap.json" Link="keymap.json" />
+  </ItemGroup>
+</Project>
