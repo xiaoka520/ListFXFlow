@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Threading;
 using System.Collections.Specialized;
+using System.Windows.Media.Imaging;
 
 namespace ListFXFlow;
 
@@ -31,18 +32,48 @@ public sealed class ClipboardBridge
         uint sequence=Native.GetClipboardSequenceNumber(); if(sequence==lastSequence) return;
         try {
             string[]? files=Clipboard.ContainsFileDropList() ? Clipboard.GetFileDropList().Cast<string>().ToArray() : null;
-            string? text=files is {Length:>0} ? null : Clipboard.ContainsText() ? Clipboard.GetText() : null;
-            lastSequence=sequence; generation++; link.LocalChanged(text,files is {Length:>0} ? files : null,generation);
+            BitmapSource? image=files is {Length:>0} ? null : Clipboard.ContainsImage() ? Clipboard.GetImage() : null;
+            string? text=files is {Length:>0} || image!=null ? null : Clipboard.ContainsText() ? Clipboard.GetText() : null;
+            if(Native.GetClipboardSequenceNumber()!=sequence) return;
+            lastSequence=sequence; generation++;
+            var current=link;
+            current.LocalChanged(text,files is {Length:>0} ? files : null,generation);
+            if(image!=null) {
+                image.Freeze(); long revision=generation;
+                // Compression must not stall input dispatch or publish an older copy after a newer one.
+                _=EncodeImage(current,image,revision,sequence);
+            }
         } catch(ExternalException) { /* Another app has the clipboard open; retry the next tick. */ }
+        catch(Exception error) when(error is System.IO.IOException or FormatException or NotSupportedException or ArgumentException or InvalidOperationException) {
+            // A malformed/unsupported bitmap supplied by another application must not
+            // escape the DispatcherTimer and terminate ordinary keyboard/mouse sharing.
+            lastSequence=sequence; generation++; link?.LocalChanged(null,null,generation);
+            OnStatus?.Invoke("剪贴板："+error.Message);
+        }
+    }
+    private async Task EncodeImage(ClipboardLink current,BitmapSource bitmap,long revision,uint sequence) {
+        try {
+            byte[] png=await Task.Run(()=>ClipboardBitmap.Encode(bitmap));
+            await dispatcher.InvokeAsync(()=> {
+                if(link==current && generation==revision && Native.GetClipboardSequenceNumber()==sequence)
+                    current.LocalChanged(null,null,revision,png);
+            });
+        } catch(Exception error) when(error is System.IO.IOException or ArgumentException or NotSupportedException or InvalidOperationException) {
+            await dispatcher.InvokeAsync(()=> { if(link==current && generation==revision) OnStatus?.Invoke("剪贴板图片："+error.Message); });
+        }
     }
     private async Task<bool> Apply(ClipboardLink current,ClipboardResult result,long version) {
+        // Load and validate completely before clearing the clipboard. BitmapCacheOption.OnLoad
+        // detaches the image from its cache file, allowing a persistent native bitmap payload.
+        ClipboardBitmap.Prepared? image=result.Image==null ? null : await Task.Run(()=>ClipboardBitmap.Decode(result.Image));
         for(int attempt=0;attempt<8;attempt++) {
             bool retry=false,applied=false;
             await dispatcher.InvokeAsync(()=> {
                 if(link!=current || generation!=version || Native.GetClipboardSequenceNumber()!=lastSequence) return;
                 try {
                     var data=new DataObject();
-                    if(result.Files!=null) { var paths=new StringCollection(); paths.AddRange(result.Files); data.SetFileDropList(paths); data.SetData("Preferred DropEffect",new System.IO.MemoryStream(BitConverter.GetBytes(1))); }
+                    if(image!=null) data=ClipboardBitmap.DataObject(image);
+                    else if(result.Files!=null) { var paths=new StringCollection(); paths.AddRange(result.Files); data.SetFileDropList(paths); data.SetData("Preferred DropEffect",new System.IO.MemoryStream(BitConverter.GetBytes(1))); }
                     else data.SetText(result.Text!);
                     Clipboard.SetDataObject(data,true); lastSequence=Native.GetClipboardSequenceNumber(); applied=true;
                 } catch(ExternalException) { retry=true; }

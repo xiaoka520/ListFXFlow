@@ -86,3 +86,8 @@ Windows suppression is local and follows authenticated sharing plus Mac pointer 
 双端 display 协商 game-mode-v1。Windows 是游戏保护状态的唯一发布方：gameMode { down, phase, active:"windows", x, y }；phase 为 automatic/manual（down=true）或 off（down=false），x/y 必须为有限的 0..1 快照。Mac 仅在已协商能力的普通会话接收，原子更新锁定与 Windows 位置；off 在当前 Mac 所有权下不改变所有权。Mac 的 gameModeRequest { down } 请求由 Windows 输入线程处理，开启只允许当前控制 Windows。登录前会话不协商此功能。
 
 Mac 在 Windows 游戏锁定下发送 relativePointer { dx,dy }，有限绝对值不超过 1,000,000；不计算或发送虚拟跨屏坐标。Windows 仅在协商能力、Windows 活跃且已锁定时注入相对鼠标；其他时段丢弃。连续相对采样相加，按键/点击/模式变化仍为顺序屏障。解锁清掉待发旧模式采样与未注入移动并使用当前 Windows 坐标同步，断线清除全部游戏状态。
+
+
+## Clipboard image extension (build 37)
+
+The clipboard channel hello/challenge exchange advertises `clipboard-image-v1` in `features`. Send image payloads only to a peer advertising this feature; older peers retain text/file support. An image reuses the bounded file stream with `begin.imageFormat="png"`, exactly one root and one regular entry, 1...134217728 encoded bytes. It then uses the same entry, 192 KiB chunks, SHA-256 fileEnd and exact commit. Receivers reject unknown image formats, empty/oversized images and directory entries. The completed result retains image semantics instead of becoming a file-only clipboard. Decode and verify dimensions before modifying the clipboard (maximum 32768 per dimension and 100 million pixels). Native Mac publication includes PNG and TIFF; Windows includes Bitmap, lossless PNG and a file-drop path for Explorer. Sender conversion and receiver decoding run outside input/UI dispatch, with revision checks before publication. A newer local copy still wins; locally received contents are not echoed. Existing file URLs/drop lists take priority over image previews, preserving ordinary file copy semantics.

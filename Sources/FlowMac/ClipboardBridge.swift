@@ -46,6 +46,7 @@ private actor ClipboardSession {
     private var outbound: Task<Void,Never>?
     private var outboundID: String?
     private var outboundFiles=false
+    private var supportsImages=false
     private var generation=0
     private var inboundGeneration=0
     private var closed=false
@@ -64,8 +65,9 @@ private actor ClipboardSession {
             let hello=try JSONDecoder().decode(Message.self,from: await socket.frame())
             guard hello.type == "hello", let cn=Data(hex: hello.nonce ?? ""), cn.count == 32,
                   let proof=Data(hex: hello.auth ?? ""), Authentication.verify(proof,secret: secret,role: "clipboard-client",client: cn,server: Data()) else { throw ClipboardError.invalid }
+            supportsImages=hello.features?.contains("clipboard-image-v1") == true
             let sn=Data.random(32)
-            var challenge=Message("challenge"); challenge.nonce=sn.hex; challenge.auth=Authentication.proof(secret: secret,role: "clipboard-server",client: cn,server: sn).hex
+            var challenge=Message("challenge"); challenge.features=["clipboard-image-v1"]; challenge.nonce=sn.hex; challenge.auth=Authentication.proof(secret: secret,role: "clipboard-server",client: cn,server: sn).hex
             try await socket.sendData(JSONEncoder().encode(challenge))
             let finish=try JSONDecoder().decode(Message.self,from: await socket.frame())
             guard finish.type == "finish", let proof=Data(hex: finish.auth ?? ""), Authentication.verify(proof,secret: secret,role: "clipboard-finish",client: cn,server: sn) else { throw ClipboardError.invalid }
@@ -86,7 +88,7 @@ private actor ClipboardSession {
                         try await send(ClipboardPacket(applied ? "done" : "cancel",id: packet.id))
                         await status(applied ? "剪贴板已就绪" : "本机剪贴板已变化，未覆盖新内容")
                         if echo {
-                            switch result { case .text(let text): await localChanged(text: text,urls: nil,generation: 0); case .files(let urls): await localChanged(text: nil,urls: urls,generation: 0) }
+                            switch result { case .text(let text): await localChanged(text: text,urls: nil,generation: 0); case .files(let urls): await localChanged(text: nil,urls: urls,generation: 0); case .image(let url): await localChanged(text: nil,urls: nil,generation: 0,image: try Data(contentsOf: url)) }
                         }
                     }
                     else if packet.kind == "begin" { await status("正在接收文件…") }
@@ -104,17 +106,29 @@ private actor ClipboardSession {
         try Task.checkCancellation(); guard !closed, let secure=socket.secure else { throw ClipboardError.incomplete }
         try await socket.sendData(secure.sealData(JSONEncoder().encode(packet)))
     }
-    func localChanged(text: String?, urls: [URL]?, generation: Int) async {
+    func localChanged(text: String?, urls: [URL]?, generation: Int, image: Data? = nil) async {
         self.generation=generation
         if let id=inbox.id { inbox.abort(); try? await send(ClipboardPacket("cancel",id: id)) }
         outbound?.cancel()
-        let id=UUID().uuidString.lowercased(); outboundID=id; outboundFiles=urls != nil
-        outbound=Task { await self.publish(id: id,text: text,urls: urls) }
+        let id=UUID().uuidString.lowercased(); outboundID=id; outboundFiles=urls != nil || image != nil
+        outbound=Task { await self.publish(id: id,text: text,urls: urls,image: image) }
     }
-    private func publish(id: String,text: String?,urls: [URL]?) async {
+    private func publish(id: String,text: String?,urls: [URL]?,image: Data?) async {
         do {
             guard socket.secure != nil else { return }
-            if let urls {
+            if let image {
+                guard supportsImages else { await status("远端版本不支持图片剪贴板，请更新两端应用"); return }
+                let bytes=try ClipboardPasteboard.pngData(from: image)
+                let name="Clipboard.png"
+                var begin=ClipboardPacket("begin",id: id); begin.roots=[name]; begin.count=1; begin.total=Int64(bytes.count); begin.imageFormat="png"
+                try begin.validate(); try await send(begin); await status("正在发送图片…")
+                var entry=ClipboardPacket("entry",id: id); entry.path=name; entry.size=Int64(bytes.count); entry.directory=false; try await send(entry)
+                for offset in stride(from: 0,to: bytes.count,by: 196608) {
+                    var chunk=ClipboardPacket("data",id: id); chunk.bytes=bytes.subdata(in: offset..<min(offset+196608,bytes.count)); try await send(chunk)
+                }
+                var end=ClipboardPacket("fileEnd",id: id); end.hash=Data(SHA256.hash(data: bytes)).hex; try await send(end)
+                try await send(ClipboardPacket("commit",id: id))
+            } else if let urls {
                 let manifest=try ClipboardManifest(urls: urls)
                 try Task.checkCancellation()
                 var begin=ClipboardPacket("begin",id: id); begin.roots=manifest.roots; begin.count=manifest.entries.count; begin.total=manifest.total
@@ -184,7 +198,13 @@ final class ClipboardBridge {
                 self.connection=incoming; self.authenticated=false
                 incoming.start(queue: DispatchQueue(label: "ListFXFlow.clipboard.network"))
                 let session=ClipboardSession(connection: incoming,secret: token,echo: self.testMode,cache: self.testCache,apply: { [weak self] result, generation in
-                    guard let self else { return false }; return await MainActor.run { self.apply(result,generation: generation,epoch: epoch) }
+                    guard let self else { return false }
+                    do {
+                        let content=try ClipboardPasteboard.prepare(result)
+                        return await MainActor.run { self.apply(content,generation: generation,epoch: epoch) }
+                    } catch {
+                        await MainActor.run { self.report("剪贴板：\(error.localizedDescription)",epoch: epoch) }; return false
+                    }
                 },status: { [weak self] status in guard let self else { return }; await MainActor.run { self.report(status,epoch: epoch) } },ready: { [weak self] in
                     guard let self else { return }; await MainActor.run { self.didConnect(epoch: epoch) }
                 },ended: { [weak self,weak incoming] in
@@ -215,21 +235,24 @@ final class ClipboardBridge {
             onStatus?("请在系统设置的剪贴板权限中允许 ListFXFlow")
             return
         }
-        lastCount=board.changeCount; generation += 1
-        let urls=(board.readObjects(forClasses: [NSURL.self],options: [.urlReadingFileURLsOnly:true]) as? [URL])
-        let text=urls?.isEmpty == false ? nil : board.string(forType: .string)
+        let count=board.changeCount
+        let content=ClipboardPasteboard.read(board)
+        guard board.changeCount == count else { return } // A promised provider may change the board while reading.
+        lastCount=count; generation += 1
         let current=generation
-        Task { await session.localChanged(text: text,urls: urls?.isEmpty == false ? urls : nil,generation: current) }
+        Task {
+            switch content {
+            case .files(let urls): await session.localChanged(text: nil,urls: urls,generation: current)
+            case .image(let bytes): await session.localChanged(text: nil,urls: nil,generation: current,image: bytes)
+            case .text(let text): await session.localChanged(text: text,urls: nil,generation: current)
+            case .unsupported: await session.localChanged(text: nil,urls: nil,generation: current)
+            }
+        }
     }
-    private func apply(_ result: ClipboardResult,generation: Int,epoch: UUID) -> Bool {
+    private func apply(_ content: ClipboardPasteboard.Prepared,generation: Int,epoch: UUID) -> Bool {
         guard epoch == sessionEpoch, generation == self.generation, NSPasteboard.general.changeCount == lastCount else { return false }
         let board=NSPasteboard.general
-        board.clearContents()
-        let written: Bool
-        switch result {
-        case .text(let text): written=board.setString(text,forType: .string)
-        case .files(let urls): written=board.writeObjects(urls.map { $0 as NSURL })
-        }
+        let written=ClipboardPasteboard.write(content,to: board)
         lastCount=board.changeCount; return written
     }
     func stop() {

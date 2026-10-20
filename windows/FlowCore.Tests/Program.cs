@@ -207,6 +207,7 @@ await using(var stream=new MemoryStream()) {
         inbox.Abort(); Check(Directory.Exists(complete!.Files![0]),"completed clipboard files remain usable after disconnect");
     } finally { if(Directory.Exists(cache)) Directory.Delete(cache,true); }
 }
+ClipboardImageTests.Run(Check,Reject);
 // Native touchpad messages, opt-in gating and ABI construction never call user32.
 {
     var contacts=new[] { new TouchpadContact(1,.3,.5),new TouchpadContact(2,.7,.5) };
@@ -341,11 +342,12 @@ if(args.Contains("--interop")) {
             var ready=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var textDone=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var filesDone=new TaskCompletionSource<string[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var imageDone=new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             var replaced=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var sendStarted=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             clipboard.OnReady=()=>ready.TrySetResult();
             clipboard.OnStatus=status=> { Console.WriteLine("CLIPBOARD "+status); if(status=="正在发送文件…") sendStarted.TrySetResult(); };
-            clipboard.OnResult=(result,_)=> { if(result.Text=="最新复制内容") replaced.TrySetResult(); if(result.Text=="跨平台剪贴板 Unicode 🌏") textDone.TrySetResult(); if(result.Files!=null) filesDone.TrySetResult(result.Files); return Task.FromResult(true); };
+            clipboard.OnResult=(result,_)=> { if(result.Text=="最新复制内容") replaced.TrySetResult(); if(result.Text=="跨平台剪贴板 Unicode 🌏") textDone.TrySetResult(); if(result.Files!=null) filesDone.TrySetResult(result.Files); if(result.Image!=null) imageDone.TrySetResult(result.Image); return Task.FromResult(true); };
             var clipRun=clipboard.Run(IPAddress.Loopback,IPAddress.Loopback,cap,49336);
             await ready.Task.WaitAsync(deadline.Token);
             clipboard.LocalChanged("跨平台剪贴板 Unicode 🌏",null,1); await textDone.Task.WaitAsync(deadline.Token);
@@ -357,10 +359,14 @@ if(args.Contains("--interop")) {
             Check(File.ReadAllBytes(Path.Combine(files[0],"内容.bin")).SequenceEqual(contents),"encrypted Swift/.NET multi-chunk file clipboard round trip");
             Check(Directory.Exists(Path.Combine(files[0],"空目录")) && new FileInfo(Path.Combine(files[0],"空文件")).Length==0,"cross-platform clipboard preserves empty directory and empty file");
             Check(files.Length==2 && File.ReadAllText(files[1])=="second root","multi-selection clipboard preserves separate top-level files");
+            byte[] image=ClipboardImageTests.Fixture();
+            clipboard.LocalChanged(null,null,3,image);
+            string imagePath=await imageDone.Task.WaitAsync(deadline.Token);
+            Check(File.ReadAllBytes(imagePath).SequenceEqual(image),"encrypted Swift/.NET PNG above 1 MiB round trip retains exact image representation and hash");
             sendStarted=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            clipboard.LocalChanged(null,[Path.Combine(fixture,"资料")],3);
+            clipboard.LocalChanged(null,[Path.Combine(fixture,"资料")],4);
             await sendStarted.Task.WaitAsync(deadline.Token);
-            clipboard.LocalChanged("最新复制内容",null,4);
+            clipboard.LocalChanged("最新复制内容",null,5);
             await replaced.Task.WaitAsync(deadline.Token);
             Check(true,"new clipboard copy supersedes an active file transfer without breaking the channel");
             clipboard.Dispose(); await clipRun;

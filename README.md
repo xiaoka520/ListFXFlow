@@ -1,104 +1,133 @@
 # ListFXFlow
 
-为桌面 Mac 与 Windows 笔记本打造的雷雳键鼠共享工具。Mac 使用 Swift / SwiftUI；Windows 使用 C# / WPF 与 Win32 原生输入接口。
+一套键盘鼠标，在 Mac 和 Windows 之间切换使用。
 
-鼠标跨过相邻屏幕边缘时切换设备，键盘始终跟随当前光标。远控另一端时固定并隐藏本机鼠标，返回或断开时恢复之前的应用和光标。Windows 的钩子、注入与网络处理独立于界面线程，移动事件会合并，点击与按键保持顺序。鼠标和键盘可以分别连接在任一设备上；不要求两者插在同一台电脑。两块屏幕可以拖动排列，支持上下左右与错位对齐。
+用雷雳线连接两台电脑后，把鼠标移过相邻屏幕的边缘，就能控制另一台电脑，键盘也会跟着切换。两台电脑各自显示自己的桌面，适合把 Mac 和 Windows 笔记本放在一起使用。
 
-0.2.0 支持文字、文件和文件夹的双向剪贴板同步。双端均需更新才能使用新功能；只与旧版连接时仍可共享键鼠。调整屏幕排列保留当前控制端及屏内位置。Windows 离开位置的指针会停留并隐藏，后台原始鼠标输入不受屏幕边缘限制。
+- **跨屏控制**：支持鼠标移动、点击、滚轮和常规键盘输入，键盘和鼠标也可以分别接在两台电脑上。
+- **双向复制粘贴**：在一端复制文字、截图、文件或文件夹，在另一端粘贴。
+- **自由排列屏幕**：按桌面的实际摆放位置，拖动设置上下左右及错位排列。
+- **游戏保护**：使用 Windows 游戏时，可以把鼠标锁在 Windows，避免误切回 Mac。
+- **后台运行**：Mac 常驻菜单栏，Windows 常驻系统托盘，关闭窗口后仍可使用。
 
-当前开发构建为 **Mac / Windows 0.2.3 build 34**；未发布期间只增加 `BUILD`，保留 `VERSION`。Mac 常驻菜单栏，Windows 常驻系统托盘。滚轮固定使用精细增量，不额外添加动画；Windows 普通键鼠注入采用独立线程，Windows 本机手势屏蔽运行在独立辅助进程，Mac 加密收发采用独立队列。DMG 的图标区域使用毛玻璃视觉背景。
+## 使用前准备
 
-本构建移除了 Caps 临时切换 ABC 输入源的处理，保持用户选择的输入法。Caps 混输和候选保留等待真实连接下连续键盘输入验收；之前逐次点击测试按钮会打断组合状态，相应结果不能证明原生混输行为。
+| 设备 | 要求 |
+| --- | --- |
+| Mac | Apple Silicon（M 系列芯片），macOS 14 或更新版本 |
+| Windows | Windows 11 x64，支持 Thunderbolt / USB4 网络连接的电脑与驱动 |
+| 连接线 | 支持数据传输的雷雳 3 / 4 / 5 线 |
 
-## 使用
+**两台电脑需要能通过雷雳网络互相连接。** 只有雷雳接口或 USB-C 外形的线材，还不能保证可用；Windows 需要识别出 Thunderbolt / USB4 网络适配器。程序不会自动修改网络配置或防火墙。
 
-1. 用支持数据传输的雷雳 3 / 4 / 5 线直连两台电脑。Windows 11 设备需要具备可用的 Thunderbolt / USB4 网络驱动；实际驱动兼容性取决于机型。
-2. Mac 打开 `ListFXFlow-Mac-arm64-0.2.3-b34.dmg`，把 `ListFXFlow.app` 拖入「应用程序」后启动。应用默认启用共享，并常驻屏幕右上角菜单栏；关闭主窗口后仍在后台运行。在权限向导中分别打开**辅助功能**和**输入监控**设置。设置旁会同时显示一个带应用图标的小窗口，按住图标将当前 `.app` 拖入权限列表，再开启右侧开关；返回应用后会自动刷新状态。两项权限齐备后会继续自动启动；没有雷雳网桥时会等待接线。若系统要求重新启动，点击「重新打开应用」。请给向导中显示的当前应用路径授权。需要登录前共享时，先与 Windows 成功连接一次，再进入「权限设置 → 登录前共享」安装组件；更新、运行状态与移除也在此处。
-3. Windows 运行 `ListFXFlow-Setup-x64-0.2.3-b34.exe`，按向导安装到当前用户；安装后可勾选立即运行。应用常驻系统托盘，关闭主窗口或最小化窗口后仍在后台运行。也可直接解压 `ListFXFlow-Windows-x64-0.2.3-b34.zip` 运行免安装版。应用自动选择识别到的 Thunderbolt / USB4 网卡；若驱动使用其他名称，请选择对应的**有线雷雳网卡**，点击「连接 Mac」。滚轮固定启用精细增量，保留小幅滚动，不额外生成动画；无需设置开关。
-4. 默认自动交换设备身份、自动加密，无需配对码。优先使用已保存的地址；Windows 的「Mac IP」可填写 Mac 雷雳 IPv4，留空时优先尝试上次认证成功的地址，不可用则自动发现。IP、网卡选择和成功连接地址会保存；已连接时不为切换地址主动断线。Mac 持续检查实际网桥地址，地址变化或监听失败时自动重新监听；手动停止不会自动恢复。首次连接后记住对端身份。
-5. 在任一端拖动 Windows 屏幕调整排列。无需偏移滑块，直接拖动即可调整错位。两台设备必须共享一段相邻边缘，光标才能从这段边缘穿过。
-6. **Ctrl + Alt + Esc** 紧急停止；Mac 上是 **Control + Option + Esc**。关闭程序、休眠、连接中断或心跳超时都会停止转发并释放程序注入的按键；未安装登录组件时，锁屏也会停止共享。初次连接由 Mac 保持当前位置，修改排列不会改变控制端或将指针居中。手动停止后不会在本次运行中自行恢复共享。
-7. 主窗口不是程序的生命周期。Mac 关闭主窗口后从菜单栏图标重新打开或退出；Windows 关闭或最小化主窗口后从系统托盘图标重新打开、共享或退出。托盘/菜单栏菜单里也能直接停止共享。真正退出请使用菜单中的「退出 ListFXFlow」，直接关闭窗口只会转入后台。
-8. 在本机复制文字、普通文件或文件夹，连接后自动同步到远端。文件等待状态显示「文件已同步 · 可在远端粘贴」后，按目标系统的粘贴快捷键粘贴：Windows 为 Ctrl+V，Mac 为 Command+V。支持多选、子目录和空目录；停止共享会取消未完成传输。
+目前每台电脑只支持主显示器，一次连接一台 Mac 和一台 Windows。程序只共享键鼠和剪贴板，不提供投屏或远程画面。
 
-两端仍显示自己的桌面和应用，不传输画面。Windows 程序为自包含版本，不需要另装 .NET。Mac 首版构建为 Apple Silicon，要求 macOS 14 或更新版本。
+## 下载与安装
 
-## 当前范围与边界
+当前为 **0.2.3 build 37 开发预览版**，尚未发布正式版本，部分功能仍在进行双机测试。建议两端安装相同构建，截图和图片同步需要两端均为 build 37 或更新版本。
 
-- 支持每台设备的**主显示器**；各设备内部多显示器拓扑和多台远端尚未实现。
-- 支持常规键盘、五键鼠标、纵向与横向滚动。Fn、媒体键和厂商专用键尚未支持；跨系统触控板手势映射暂时隐藏；指针在 Mac 时自动屏蔽 Windows 本机多指手势，说明见下文。按物理键位传输，输入法由目标系统处理；Caps 不切换输入源；中文混输仍待真机验收；Win 键对应 Command，Alt 对应 Option，Ctrl 保持 Control。
-- 按住键盘按键或鼠标按钮时暂不自动跨屏，避免拖动中断或修饰键残留。显示器配置变化后停止共享，需要重新连接。
-- Windows 登录页与锁屏共享已移除，只支持登录后的普通桌面。Mac 登录页与锁屏需要另外安装 Mac 系统组件，见[启用与移除说明](docs/LOGIN-SUPPORT.md)；Windows 此时需已登录并运行普通应用。不包括 FileVault 解锁前；Mac LoginWindow、TCC 和 Secure Input 行为尚待双机验收。
-- 仅使用雷雳网络；Mac 监听 `bridge0` 的 IPv4 地址，Windows 连接绑定用户选择的有线网卡。支持 Mac 网桥多个 IPv4 地址，不回退 Wi-Fi，不修改系统网络配置。
-- 雷雳端口和线材本身不保证网络可用。Windows 必须出现 Thunderbolt Networking / USB4 P2P 网络适配器，双方需有可互通的 IPv4 地址。若驱动无法建立网桥，应用层无法代替驱动。程序不会自动配置静态 IP 或更改防火墙。
-- 本地开发包未做发行证书签名和公证。Mac 构建脚本优先使用本机已有 Apple Development 身份签名，保持后续更新的设备权限身份稳定；没有证书时退回 ad-hoc。Windows 安装包尚无 Authenticode 签名，首次运行可能出现 SmartScreen 提示，需要选择「更多信息」后继续。用于双机联调，不作为已经完成硬件验收的发行版。
+预览安装包可在 [GitHub 构建页面](https://github.com/xiaoka520/ListFXFLow/actions/workflows/build.yml)下载：登录 GitHub，打开一次成功的构建，在页面底部的 **Artifacts** 中下载对应系统的压缩包并解压。
 
+### Mac
 
-## Windows 本机手势屏蔽
+1. 打开 `ListFXFlow-Mac-arm64-0.2.3-b37.dmg`。
+2. 把 **ListFXFlow.app** 拖到「应用程序」，再从「应用程序」打开。
+3. 按应用内的权限向导，分别打开系统的**辅助功能**和**输入监控**设置。
+4. 将向导旁小窗口中的应用图标拖入权限列表，打开对应开关。请授权向导中显示的当前应用路径。
+5. 返回 ListFXFlow，应用会自动检查权限并启用共享。若提示需要重启，点击「重新打开应用」。
 
-跨系统多指手势映射暂时隐藏，两端不显示实验开关，也不宣告原生手势接收能力。已保存的旧设置保留，但不能重新启用被隐藏的映射功能；不向另一端转发多指触点或手势事件。
+### Windows
 
-Windows 的屏蔽与旧开关和 Mac 手势能力无关：连接正常且指针控制 Mac 时自动申请屏蔽本机触控板多指手势；返回 Windows、停止共享、断线或锁屏后恢复本机处理。普通鼠标移动、单指移动、点击和实体鼠标滚轮沿用原输入通道。控制 Mac 时，已被接管的精密触控板兼容滚轮不再通过原始鼠标通道重复转发。
+1. 运行 `ListFXFlow-Setup-x64-0.2.3-b37.exe`，按向导安装。
+2. 安装到当前用户即可，无需另装 .NET；普通安装不需要管理员权限。
+3. 安装完成后启动 ListFXFlow。
 
-屏蔽使用官方 Windows SDK 的 TouchpadGesturesController 接管三指及以上全局手势，双指消息由自己的触控板窗口消费。独立工作进程不读取触点帧/设备坐标、不建立手势注入设备、不发送触点或接收回执；因此不依赖 Mac 虚拟 HID 权限，也不会等待 Mac 执行手势。现有实体设备需要 Windows 实际提供该接管 API。
+也可以解压 `ListFXFlow-Windows-x64-0.2.3-b37.zip`，直接运行其中的 `ListFXFlow.exe`，使用免安装版。
 
-每次跨屏都向指定工作进程重新授予前台激活资格，确认实际前台与控制器启用后才显示“本机多指手势已屏蔽”。暂时被拒绝时进行有限次恢复；失败会显示原因，可点击 Windows“本机触控板”区域的“重试”，或返回本机后重新跨屏。未修改系统触控板设置或焦点策略。真正的 SDK/进程故障只停止手势辅助功能，普通键鼠连接继续；不自动循环启动崩溃进程。
+预览包尚未完成正式发行签名；Mac 未公证，Windows 可能显示 SmartScreen 提示。请确认安装包来源后再按系统提示操作。
 
-诊断日志仍在 Windows %LOCALAPPDATA%/ListFXFlow/Diagnostics/touchpad-main.log 与 touchpad-worker.log，记录 suppressOnly 模式、前台授权和异常，不记录输入内容。Windows 原生屏蔽、返回恢复和不同设备兼容性仍需在目标笔记本验证。Mac 虚拟触控板的实验工具与权限说明保留在 [研究文档](docs/VIRTUAL-TOUCHPAD.md)，未接入日常共享。
+## 第一次连接
 
-## 剪贴板
+1. 用雷雳线直连 Mac 和 Windows，并在两端打开 ListFXFlow。
+2. Mac 完成权限授权后会自动启用共享；没有接线时会等待连接。
+3. 在 Windows 选择对应的**雷雳有线网卡**，点击「连接 Mac」。通常无需填写配对码或 IP；如果自动发现失败，可在「Mac IP」中填写 Mac 的雷雳 IPv4 地址。
+4. 连接成功后，在任一端的屏幕排列区域拖动 **Windows 屏幕**，让它与两台电脑的实际摆放位置一致。两块屏幕需要有一段边缘相接。
+5. 将鼠标从相接的边缘移过去，即可控制另一台电脑。移回来就恢复本机控制。
 
-文字和文件使用独立 TCP 49236 连接，不占用键鼠消息队列。会话密钥经已认证的加密控制连接分发，剪贴板连接再次证明持有密钥；每次连接使用新随机数派生方向密钥，以 AES-GCM 加密。文件分块为 192 KiB，接收后逐文件校验 SHA-256，全部完成才发布系统文件剪贴板。没有自动修改防火墙；若键鼠正常但剪贴板无法连接，请检查该应用的 TCP 49236 是否可通。
+程序会记住连接地址和设备身份。调整屏幕排列时，当前控制的电脑和鼠标位置会保留。
 
-文件按复制语义同步，不执行远程删除。新复制的内容会取消本端正在处理的旧任务；接收期间若本机剪贴板改变，不覆盖新内容。文字最大 512 KiB；文件总量最大 1 TiB、最多十万个文件/目录及 256 个顶层项目，还需接收端有足够磁盘空间。普通文件、空文件和文件夹受支持；符号链接、Windows 重解析点、不可跨系统使用的名称、虚拟附件、富文本和位图剪贴板暂不支持。文件内容及目录结构会复制，系统专用扩展属性、权限和资源叉不保留。
+## 日常使用
 
-收到的文件存放在 Mac 的 `~/Library/Application Support/ListFXFlow/ClipboardReceived` 或 Windows 的 `%LOCALAPPDATA%/ListFXFlow/ClipboardReceived`，使退出程序后仍能粘贴。不完整传输自动删除；已完成缓存保留，需要时可在文件管理器中清理（清理当前剪贴板引用的缓存前应先粘贴或重新复制其他内容）。
+### 键盘与鼠标
 
-## 构建
+键盘输入发送到鼠标当前所在的电脑，输入法由那台电脑处理。按键按物理位置对应：**Win 对应 Command，Alt 对应 Option，Ctrl 对应 Control**。例如，在 Mac 上粘贴用 Command+V，在 Windows 上粘贴用 Ctrl+V。
 
-Mac（安装 Xcode 或支持的 Swift 工具链）：
+按住鼠标按钮或键盘按键时，暂不自动跨屏，松开后再移动即可。Fn、媒体键和厂商专用键暂不支持；跨系统多指手势暂未提供。中文输入法混输和不同触控板的兼容性仍需实际设备验证。
 
-```sh
-swift test
-zsh scripts/build-mac.sh
-```
+### 复制与粘贴
 
-输出 `artifacts/ListFXFlow.app`、`artifacts/ListFXFlow-Mac-arm64-<版本>-b<构建>.dmg` 和同名 ZIP。设置 `SIGN_IDENTITY` 可以指定签名身份，设为 `-` 可显式使用 ad-hoc。若系统默认只有 Command Line Tools，脚本会优先使用 `/Applications/Xcode.app`。
+在任一端复制内容，等待同步完成，再到另一端粘贴：
 
-Windows（.NET 10 SDK）：
+| 内容 | 使用方式 |
+| --- | --- |
+| 文字 | 复制后，在另一端的输入框粘贴；暂不保留富文本格式 |
+| 截图、图片 | 将截图或图片复制到剪贴板，在另一端支持图片的应用中粘贴 |
+| 文件、文件夹 | 支持多选和子目录；等待状态显示「文件已同步 · 可在远端粘贴」后，再到目标文件夹粘贴 |
 
-```powershell
-dotnet run --project windows/FlowCore.Tests/FlowCore.Tests.csproj -c Release
-./scripts/build-windows.ps1
-```
+文件按复制处理，不会删除原文件。同步过程中再次复制其他内容，会取消旧的传输；停止共享也会取消未完成的传输。复制图片文件时，另一端收到的仍是文件。
 
-输出免安装 ZIP 与 `artifacts/ListFXFlow-Setup-x64-<版本>-b<构建>.exe`。安装包把自包含的 `ListFXFlow.exe` 嵌入自身，安装到当前用户目录并注册卸载入口，不需要管理员权限。
+文字上限为 512 KiB，单张图片上限为 128 MiB 且最多一亿像素；文件总量上限为 1 TiB，接收端需要有足够空间。符号链接、特殊文件和部分系统专用文件属性暂不支持。
 
-也可以在 Mac 用 .NET SDK 交叉构建 Windows 程序（不能代替 Windows 上的输入和 UI 验收）：
+收到的文件会保留在本机，退出程序后仍可粘贴。需要清理时，请先把要保留的文件粘贴到目标位置，再清理以下缓存目录：
 
-```sh
-dotnet publish windows/ListFXFlow/ListFXFlow.csproj -c Release -r win-x64 \
-  --self-contained true -p:PublishSingleFile=true \
-  -p:IncludeNativeLibrariesForSelfExtract=true -o artifacts/Windows-x64
-```
-
-自动化检查见 `.github/workflows/build.yml`。网络协议互通测试见 [验证记录](docs/VALIDATION.md)；消息格式与身份协商见 [协议说明](docs/PROTOCOL.md)。
-
-## 实现依据
-
-- [Apple：IP over Thunderbolt](https://support.apple.com/guide/mac-help/mchld53dd2f5/mac) 说明雷雳网桥的 IP 通信。Apple 页面面向 Mac-to-Mac，Windows 端的条件需结合微软文档和真机检查。
-- [Microsoft：USB4 域间连接](https://learn.microsoft.com/zh-cn/windows-hardware/design/component-guidelines/usb4-interdomain-connections) 说明 Windows USB4NET 网络支持。
-- [Apple：CGEvent](https://developer.apple.com/documentation/coregraphics/cgevent) 提供 macOS 事件截获与注入接口。
-- [Microsoft：SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput) 说明 Windows 输入注入与 UIPI 权限限制。
-- [Microsoft：Raw Input](https://learn.microsoft.com/en-us/windows/win32/inputdev/about-raw-input) 与 [SetCursor](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setcursor) 提供后台鼠标移动与指针显示控制；不替换系统光标主题。
-
+- Mac：`~/Library/Application Support/ListFXFlow/ClipboardReceived`
+- Windows：`%LOCALAPPDATA%/ListFXFlow/ClipboardReceived`
 
 ### Windows 游戏保护
 
-双端更新到 build 34。控制 Windows 时按 Ctrl + Alt + L（Mac 键盘为 Ctrl + Option + L）锁定/解除，也可使用主界面及托盘/状态栏按钮。锁定期间阻止所有输入来源跨回 Mac，并拒绝迟到的其他桌面所有权消息；普通键鼠仍交给 Windows 游戏处理。Ctrl + Alt + Esc 仍停止共享。锁定状态不持久保存，停止、断线或锁屏后清除。
+控制 Windows 时，按 **Ctrl + Alt + L** 锁定或解除；Mac 键盘对应 **Control + Option + L**。也可以使用主窗口、菜单栏或托盘中的游戏保护按钮。锁定后，鼠标不会跨回 Mac。
 
-Windows 默认启用可关闭的自动保护：前台非本程序窗口隐藏指针，且覆盖显示器或限制了指针活动区域时启动，返回可见指针或退出该捕获窗口后释放。这是外部状态启发式，不是 Windows 提供的“正在游戏”标志；全屏视频隐藏指针等场景也可能触发。可关闭自动选项并使用手动锁定。自动保护期间手动解除会保持放行，直到该捕获状态结束或前台窗口改变。不会修改游戏的 ClipCursor、焦点或系统鼠标设置。
+Windows 默认开启自动保护，在检测到隐藏鼠标的全屏或限制鼠标活动范围的窗口时自动锁定。全屏视频等场景也可能触发；如果不适合你的使用习惯，可以在 Windows 主窗口关闭自动保护，改用快捷键手动锁定。
 
-参考 Deskflow 的锁定及相对运动设计：Mac 鼠标控制已锁定的 Windows 时按物理位移发送 relativePointer，不累计虚拟桌面坐标；Windows 用相对鼠标输入提交，合并保留位移总量和点击顺序。解锁时按 Windows 当前指针位置重新同步，避免旧坐标跳动。软件注入在特定游戏、Raw Input/反作弊环境中的兼容性仍需真机验证；不能把构建、模拟检查或网络互通当作游戏验收。
+停止共享或断线后会清除锁定。不同游戏，尤其使用反作弊或特殊输入方式的游戏，兼容性仍需实际测试。
 
-研究依据：[Deskflow 配置](https://github.com/deskflow/deskflow/blob/master/docs/Configuration.md)、[Server.cpp 锁定与相对运动](https://github.com/deskflow/deskflow/blob/master/src/lib/server/Server.cpp)、[Windows 相对输入](https://github.com/deskflow/deskflow/blob/master/src/lib/platform/MSWindowsDesks.cpp)。实现使用本项目 Swift/C# 路由与输入队列，未复制 Deskflow C++ 实现。
+### 停止共享与退出
+
+**随时按 Ctrl + Alt + Esc 紧急停止共享；Mac 键盘对应 Control + Option + Esc。** 也可以通过菜单栏或托盘菜单停止。
+
+关闭主窗口只会转入后台。需要重新打开窗口或彻底退出时，点击 Mac 菜单栏或 Windows 系统托盘中的 ListFXFlow 图标，选择相应菜单。手动停止共享后，需要自行重新启用。
+
+## 常见问题
+
+### 连接不上，或 Windows 找不到 Mac
+
+先检查雷雳线和 Windows 的 Thunderbolt / USB4 网络驱动，确认系统中出现对应的网络适配器，再确认两端雷雳网卡有可互通的 IPv4 地址。Windows 应选择雷雳网卡；自动发现失败时，可以手动填写 Mac 的雷雳 IP。
+
+程序只使用雷雳网络，不会自动改用 Wi-Fi。若系统本身未建立雷雳网络，需要先解决线材、驱动或网络问题。
+
+### 已连接，但鼠标不能跨屏
+
+检查 Mac 的辅助功能、输入监控权限是否都已开启，以及授权的是否是当前安装的应用。再检查屏幕排列是否有相邻边缘、是否仍按住某个按键或鼠标按钮，以及 Windows 游戏保护是否已锁定。
+
+### 键鼠正常，但复制粘贴没有同步
+
+确认两端版本一致，并等待剪贴板状态显示连接或同步完成。截图同步需要 build 37 或更新版本；文件接收端需要有足够空间。如果仍失败，请检查防火墙是否允许 ListFXFlow 的 **TCP 49236** 连接。
+
+### 为什么共享突然停止了
+
+休眠、断线或显示器配置变化等情况可能停止共享。恢复后先查看应用状态，必要时重新启用并连接。若经常发生，可在 [问题反馈](https://github.com/xiaoka520/ListFXFLow/issues)中提供两端系统版本、应用构建号、提示文字，以及停止前的操作。
+
+### 锁屏或登录界面能用吗
+
+Windows 目前只支持登录后的普通桌面，不支持登录页、锁屏和 UAC 安全桌面。
+
+Mac 的登录页和锁屏共享需要另外安装组件：先在普通桌面成功连接一次，再进入「权限设置 → 登录前共享」。安装和移除方法见 [Mac 登录前共享说明](docs/LOGIN-SUPPORT.md)。该功能尚待双机验收，不包含 FileVault 开机解锁界面。
+
+## 更多资料
+
+- [Windows 快速使用说明](docs/Windows-QuickStart.txt)
+- [开发与构建](docs/BUILDING.md)
+- [测试与验证记录](docs/VALIDATION.md)
+- [网络协议说明](docs/PROTOCOL.md)
+
+本项目采用 [GNU AGPL v3 许可证](LICENSE)。

@@ -353,3 +353,40 @@ dotnet publish windows/ListFXFlow/ListFXFlow.csproj -c Release -r win-x64 \
 - 新增四方向锁定、迟到所有权、停止重置、捕获/窗口切换、手动放行、关闭自动、快捷键连发/普通输入、协议非法值、队列屏障与阻塞原生调用期间 10,000 次相对采样守恒检查。Swift/.NET 真实 TCP 新增 gameMode、gameModeRequest、relativePointer 的字段往返校验。上述测试使用纯状态与原生驱动替身，未在 Windows 真正全屏游戏、反作弊或实体鼠标 Raw Input 模式验收。
 
 - 最终验证：57 项 Swift 测试、249 项 .NET 核心检查通过，包含真实 Swift/.NET TCP 互通共 268 项检查通过；WPF 编译 0 警告/错误。双端 Release 构建成功，Windows 嵌入安装器载荷版本 0.2.3.34/大小/SHA-256 匹配程序，便携 ZIP 的 CRC、程序和说明匹配；Mac staged/DMG 应用严格签名通过，DMG 背景、图标布局、Applications 链接、build 34 程序及 ZIP 内容一致，可选登录 PKG 为 0.2.3.34、内置 app build=34。旧成品移至废纸篓，artifacts 仅保留 build 34 及四包 SHA-256；未替换正在运行的已安装应用或安装登录组件。真实游戏与反作弊兼容性尚未验收。
+
+
+## Mac 0.2.3 build 35 — 安装界面重绘与停止原因可追踪
+
+日期：2026-10-19，Asia/Shanghai。
+
+- 用内置 imagegen 生成背景光带并保存 assets/DmgAurora.png；scripts/create-dmg-background.swift 在其上绘制低模糊折射、半透明玻璃边缘、原生标题及安装说明。移除点阵与大面积灰色面板，真实拖动图标仍由 Finder 放置，文件名小亮底保证黑色标签可读。生成提示词与设计说明见 assets/DmgDesign.md。
+- 输出显式固定 1320×800 / 144dpi（660×400 点），不随打包机器的屏幕比例变化；预览合成当前应用和 Applications 原生图标，仅用于视觉检查，没有把图标烘焙进背景。Finder 的 (170,200)/(490,200) 图标坐标保持。
+- 按用户要求调查过去几分钟 Mac 停止共享：20:34:42 显示重配置与主监听关闭紧邻；20:40:27 又有本机主动关闭监听，20:41:39 恢复。后一次现有 build 34 日志没有记录 app 级原因，不能唯一确定触发分支；几次 READ_CLOSE 只表示远端连接关闭。证据与边界见 docs/diagnostics/2026-10-19-sharing-stop.md。
+- 只增加可观测性与停止文案保留：FlowModel 日志保存 stop reason/是否可恢复/连接和监听状态，InputEngine 分别记录指针停放连续失败、监听超时、系统禁用监听、紧急快捷键及输入注入拒绝；传输记录断开原因和监听数量。保留具体停止原因，不被异步通用断开状态覆盖。不修改自动停止条件、阈值或重试策略，不采集输入内容。
+- Windows 继续使用 build 34，本轮不重打 Windows 安装器；未替换正在运行的应用或安装登录组件。
+
+- 最终验证：57 项 Swift 测试通过；Mac build 35 Release 编译成功，staged/DMG 应用严格签名通过，CFBundleVersion=35；DMG 校验及新版背景字节、Finder 布局坐标、Applications 链接、ZIP CRC/程序内容一致，嵌入登录 PKG 版本 0.2.3.35 且 app build=35。Mac build 34 成品移至废纸篓，保留 Windows build 34，重新生成四包 SHA-256。静态安装效果预览保存 assets/DmgInstallationPreview.png；没有操作用户输入窗口。
+
+
+## Mac 0.2.3 build 36 — 恢复上一版 DMG，矩形改用高斯模糊
+
+日期：2026-10-19，Asia/Shanghai。
+
+- 按用户要求恢复 build 35 之前的深色点阵、椭圆紫光、长箭头及原始标题/副标题/安装提示，保留既有图标坐标。图标底层使用实际背景的 CIGaussianBlur（20px，2× 下为 10pt），加漫反射亮度保证黑色 Finder 文件名可读。
+- 去掉生成的流光背景、折射放大、双重高光描边、玻璃阴影、标签胶囊和中间按钮形连接。弃用设计源/提示词及脚本已保存在 .build/dmg-design-b35-generated/，当前打包不再依赖该 AI 图片。
+- 输出固定 1320×800 / 144dpi（660×400 点）；静态图标合成预览已检查，真实图标仍由 Finder 提供。仅修改安装器视觉，应用运行源码和 Windows build 34 未改；Mac build 35 的停止原因日志与状态文案保留。
+- 成品验证通过：应用 strict/deep 签名、DMG 校验与只读挂载、背景字节一致、Finder 背景/窗口/图标坐标、Applications 链接、ZIP CRC 与可执行文件一致；内嵌登录组件版本 0.2.3.36、载荷 build 36。主程序代码签名之前的所有字节与 build 35 一致，确认没有运行逻辑变化。旧 Mac build 35 成品已移到废纸篓，artifacts 仅保留 Mac 36 / Windows 34。
+
+
+## Mac / Windows 0.2.3 build 37 — 截图图片剪贴板与 CI 编译修复
+
+日期：2026-10-19，Asia/Shanghai。
+
+- 根因：原来 Mac 只读取文件 URL / 字符串，Windows 只读取、发布文件列表 / 文字。系统截图复制的是 PNG/TIFF 位图，并没有文件 URL，因此被忽略；已有文件传输协议没有图片语义，不能通过调整文件复制修复。
+- 新增双向图片路径：Mac 读取 PNG/TIFF，优先于伴随文字；Windows 读取原生 BitmapSource。两端在独立工作路径转换无损 PNG，协商 clipboard-image-v1 后复用独立加密剪贴板连接、192 KiB 分块、SHA-256 和完整提交。PNG 最大 128 MiB、单边最多 32768 像素、最多一亿像素；未知格式、目录形式、空图片、未完成/校验失败内容不会发布。
+- Mac 接收后提供 PNG/TIFF；Windows 接收后提供 Bitmap、PNG 与文件列表，可用于图片粘贴和 Explorer 文件粘贴。保留已有文件 URL/列表的优先级、文字同步、复制版本检查、断线后完整缓存和新复制取消旧传输；图片解码在覆盖系统剪贴板之前完成。Windows 轮询中的不支持/无效位图错误只报告剪贴板状态，不会退出主输入进程。旧端没有图片能力时提示升级，原有文字/文件仍可使用。
+- Swift 63 项测试通过，其中 6 项新增测试覆盖私有 NSPasteboard 的截图 PNG/TIFF 读取、原生图片格式、透明度、文件与文字语义、无效数据及带哈希提交。Windows 核心 258 项检查通过；Swift/.NET 回环真实 TCP 共 278 项检查通过，包括超过 1 MiB 的真实 PNG 往返逐字节一致、1.2 MB 文件/多选/中文目录/空文件/空目录与中途替换复制。
+- Windows WPF 主程序与 ClipboardNative.Tests 交叉编译均零警告/错误。新增私有 DataObject 测试检查 Bitmap/PNG/文件列表、透明度、大图片和损坏图片，已接入 Windows Actions；当前 Mac 无法执行 WindowsDesktop 运行时，尚未在实体 Windows 剪贴板/粘贴目标上验收。测试没有读取或修改当前用户的系统剪贴板。
+- 从 GitHub run 39239489305 读取真实失败日志：Windows job 成功；Mac 在 Sources/FlowMac/App.swift:208 的除法出现 Double / CGFloat 重载歧义，swift test 编译失败，打包步骤未执行。排列几何显式统一 Double 并在 CGSize 边界转换；本地 Swift 测试和 release 打包通过。workflow 增加工具链信息、Windows 原生格式测试、CI 显式 ad-hoc 签名和缺失产物报错；YAML 解析与 diff 空白检查通过。未推送或触发新云端 run，不能宣称 Actions 已在线转绿。
+- VERSION 保持 0.2.3，只将 BUILD 增至 37；保留 build 36 的高斯模糊 DMG 背景。没有修改键鼠、手势、Caps/IME、系统网络配置或已安装应用。
+- 成品验证通过：Mac strict/deep 签名、DMG 校验/只读挂载、build 37、背景和 Finder 位置、Applications 链接、ZIP CRC/执行文件一致、内嵌登录包 0.2.3.37；Windows 主程序/安装器 x64、程序集版本、安装器内嵌 JSON+ZIP 的大小和 SHA-256 与实际主程序一致。四个最终安装包的 SHA256SUMS 均通过。旧 Mac 36 / Windows 34 成品已移入废纸篓，artifacts 保留双端 37。

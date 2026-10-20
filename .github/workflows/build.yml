@@ -5,10 +5,19 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - run: swift test
-      - run: zsh scripts/build-mac.sh
+      - name: Show Swift toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Test Mac and clipboard pasteboard formats
+        run: swift test
+      - name: Build Mac installers
+        env:
+          SIGN_IDENTITY: '-'
+        run: zsh scripts/build-mac.sh
       - uses: actions/upload-artifact@v4
         with:
+          if-no-files-found: error
           name: ListFXFlow-Mac
           path: |
             artifacts/ListFXFlow-Mac-*.dmg
@@ -21,9 +30,12 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - run: dotnet run --project windows/FlowCore.Tests/FlowCore.Tests.csproj -c Release
+      - name: Test native Windows clipboard image formats
+        run: dotnet run --project windows/ClipboardNative.Tests/ClipboardNative.Tests.csproj -c Release
       - run: ./scripts/build-windows.ps1
       - uses: actions/upload-artifact@v4
         with:
+          if-no-files-found: error
           name: ListFXFlow-Windows
           path: |
             artifacts/ListFXFlow-Setup-*.exe

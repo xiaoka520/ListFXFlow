@@ -117,6 +117,7 @@ final class InputEngine {
     private var injectedButtons = Set<Int>()
     private var lastPoint: CGPoint = .zero
     private let pointerLogger=Logger(subsystem:"com.listfxflow.mac",category:"pointer-seam")
+    private let inputLogger=Logger(subsystem:"com.listfxflow.mac",category:"input-state")
     private var lastSeamDiagnostic=0.0
     private var clicks: [Int: (time: TimeInterval, point: CGPoint, count: Int)] = [:]
     var bounds: CGRect { CGDisplayBounds(CGMainDisplayID()) }
@@ -132,7 +133,9 @@ final class InputEngine {
             var message=m;message.gestureEpoch=self.touchpadEpoch;self.flushOutbound();self.send?(message)
         }
         cursorCapture.onLost = { [weak self] in
-            guard let self else{return};self.enabled=false
+            guard let self else{return}
+            self.inputLogger.error("stop-cause=cursor-parking-failed; three consecutive native warp failures")
+            self.enabled=false
             if self.loginWindow { self.injectionFailure?() } else { self.emergency?() }
         }
         let types: [CGEventType] = [.mouseMoved,.leftMouseDragged,.rightMouseDragged,.otherMouseDragged,
@@ -153,6 +156,7 @@ final class InputEngine {
     }
     private func handle(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            inputLogger.error("stop-cause=\(type == .tapDisabledByTimeout ? "event-tap-timeout":"event-tap-disabled",privacy:.public)")
             enabled = false
             if loginWindow { injectionFailure?() } else { emergency?() }
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
@@ -170,6 +174,7 @@ final class InputEngine {
         }
         let code = Int(event.getIntegerValueField(.keyboardEventKeycode))
         if type == .keyDown, code == 53, event.flags.contains([.maskControl,.maskAlternate]) {
+            inputLogger.notice("stop-cause=emergency-shortcut")
             enabled = false; emergency?(); return nil
         }
         if [.keyDown,.keyUp,.flagsChanged].contains(type), keyboardEcho.consume(
@@ -502,6 +507,7 @@ final class InputEngine {
     }
     private func failPosting() {
         guard !injectionUnavailable else{return};injectionUnavailable=true
+        inputLogger.error("stop-cause=input-posting-denied")
         DispatchQueue.main.async { [weak self] in
             guard let self else{return};self.enabled=false
             if let failure=self.injectionFailure { failure() } else { self.emergency?() }

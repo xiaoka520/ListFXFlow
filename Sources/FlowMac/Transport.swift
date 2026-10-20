@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Network
 import CryptoKit
 import FlowCore
@@ -7,6 +8,7 @@ import Darwin
 /// Connection state and cryptography live on a dedicated queue. Event taps only
 /// enqueue sends; network decoding and callbacks cannot occupy their run loop.
 final class FlowServer {
+    private let connectionLogger=Logger(subsystem:"com.listfxflow.mac",category:"sharing-connection")
     var onMessage: ((Message) -> Void)?
     var onStatus: ((Bool, String) -> Void)?
     var onAuthenticatedAddress:((String)->Void)?
@@ -187,6 +189,9 @@ final class FlowServer {
         if self.trustedPeer == nil { self.disconnectCore("登录窗口仅允许已配对设备") }
     } }
     private func disconnectCore(_ reason: String = "共享已停止") {
+        if connection != nil || !listeners.isEmpty {
+            connectionLogger.notice("disconnect reason=\(reason,privacy:.public) hadConnection=\(self.connection != nil,privacy:.public) listenerCount=\(self.listeners.count,privacy:.public)")
+        }
         delivery.advance()
         let old = connection; connection = nil; old?.cancel()
         connected = false; secure = nil; secret = Data(); queuedBytes = 0

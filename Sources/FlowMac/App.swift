@@ -204,9 +204,10 @@ struct ArrangementView: View {
             let mac = model.topology.mac, win = model.topology.windows
             let minX = min(mac.x,win.x), maxX = max(mac.maxX,win.maxX)
             let minY = min(mac.y,win.y), maxY = max(mac.maxY,win.maxY)
-            let scale = min((geo.size.width-76)/(maxX-minX), (geo.size.height-50)/(maxY-minY))
-            let ox = (geo.size.width-(maxX-minX)*scale)/2-minX*scale
-            let oy = (geo.size.height-(maxY-minY)*scale)/2-minY*scale
+            let width=Double(geo.size.width), height=Double(geo.size.height)
+            let scale: Double = min((width-76)/(maxX-minX), (height-50)/(maxY-minY))
+            let ox: Double = (width-(maxX-minX)*scale)/2-minX*scale
+            let oy: Double = (height-(maxY-minY)*scale)/2-minY*scale
             ZStack {
                 Canvas { context, size in
                     for x in stride(from: 10.0, to: size.width, by: 18) { for y in stride(from: 10.0, to: size.height, by: 18) {
@@ -216,10 +217,10 @@ struct ArrangementView: View {
                 monitor("Mac", subtitle: "本机 · 主显示器", icon: "desktopcomputer", selected: model.active == "mac", rect: mac, scale: scale)
                     .position(x: ox+(mac.x+mac.width/2)*scale,y: oy+(mac.y+500)*scale)
                 monitor("Windows", subtitle: "远端 · 主显示器", icon: "laptopcomputer", selected: model.active == "windows", rect: win, scale: scale)
-                    .position(x: ox+(win.x+win.width/2)*scale+drag.width,y: oy+(win.y+500)*scale+drag.height)
+                    .position(x: ox+(win.x+win.width/2)*scale+Double(drag.width),y: oy+(win.y+500)*scale+Double(drag.height))
                     .gesture(DragGesture().onChanged { drag = $0.translation }.onEnded { value in
-                        let cx = win.x+win.width/2 + value.translation.width/scale
-                        let cy = win.y+500 + value.translation.height/scale
+                        let cx = win.x+win.width/2 + Double(value.translation.width)/scale
+                        let cy = win.y+500 + Double(value.translation.height)/scale
                         let rx = (cx-mac.width/2)/(mac.width/2+win.width/2)
                         let ry = (cy-500)/1000
                         let side: Side = abs(rx) >= abs(ry) ? (rx < 0 ? .left : .right) : (ry < 0 ? .top : .bottom)

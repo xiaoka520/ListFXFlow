@@ -2,8 +2,11 @@ import AppKit
 import Combine
 import CryptoKit
 import FlowCore
+import OSLog
 
 final class FlowModel: ObservableObject {
+    private let lifecycleLogger=Logger(subsystem:"com.listfxflow.mac",category:"sharing-state")
+    private var lastStopReason:String?
     @Published var connected = false
     @Published var listening = false
     @Published var autoStarting = false
@@ -73,7 +76,9 @@ final class FlowModel: ObservableObject {
         }
         server.onStatus = { [weak self] connected, status in
             guard let self else { return }
-            self.connected = connected; self.status = status; self.input.enabled = connected
+            self.connected = connected
+            self.status = !connected && !self.listening ? (self.lastStopReason ?? status):status
+            self.input.enabled = connected
             if !connected { self.touchpadActivity=nil;self.gameProtection=false;self.gameProtectionAvailable=false;self.gameProtectionStatus="连接 Windows 后可用" }
             self.updateTouchpadStatus()
             if !connected { self.clipboard.stop();self.activeBridgeID=nil }
@@ -169,6 +174,7 @@ final class FlowModel: ObservableObject {
     func start() {
         bridgeRecovery.request()
         guard !listening else { return }
+        lastStopReason=nil
         autoStarting = true
         permissions.refresh()
         guard permissions.status.ready else {
@@ -220,6 +226,8 @@ final class FlowModel: ObservableObject {
         }
     }
     func stop(reason: String = "共享已停止 · 本机控制", resumable: Bool = false) {
+        lifecycleLogger.notice("stop reason=\(reason,privacy:.public) resumable=\(resumable,privacy:.public) connected=\(self.connected,privacy:.public) listening=\(self.listening,privacy:.public)")
+        lastStopReason=reason
         resumeOnWake = resumable
         if !resumable { sleepPending = false }
         autoStarting = false;bridgeRecovery.stop()

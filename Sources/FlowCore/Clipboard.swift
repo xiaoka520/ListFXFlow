@@ -13,6 +13,7 @@ public struct ClipboardPacket: Codable {
     public var directory: Bool?
     public var bytes: Data?
     public var hash: String?
+    public var imageFormat: String?
     public init(_ kind: String, id: String) { self.kind=kind; self.id=id }
     public func validate() throws {
         guard UUID(uuidString: id) != nil else { throw ClipboardError.invalid }
@@ -20,6 +21,7 @@ public struct ClipboardPacket: Codable {
         case "text": guard let text, text.utf8.count <= 524288 else { throw ClipboardError.invalid }
         case "begin":
             guard let roots, !roots.isEmpty, roots.count <= 256, let count, (roots.count...100000).contains(count), let total, (0...1_099_511_627_776).contains(total) else { throw ClipboardError.invalid }
+            guard imageFormat == nil || (imageFormat == "png" && roots.count == 1 && count == 1 && total > 0 && total <= 134_217_728) else { throw ClipboardError.invalid }
             var names=Set<String>()
             for root in roots { try ClipboardPath.validate(root); guard !root.contains("/"), names.insert(root.lowercased()).inserted else { throw ClipboardError.invalid } }
         case "entry": guard let path, let size, size >= 0, size <= 1_099_511_627_776, let directory, !directory || size == 0 else { throw ClipboardError.invalid }; try ClipboardPath.validate(path)
@@ -101,7 +103,7 @@ public struct ClipboardManifest {
         self.roots=roots; self.entries=entries; self.total=total
     }
 }
-public enum ClipboardResult { case text(String); case files([URL]) }
+public enum ClipboardResult { case text(String); case files([URL]); case image(URL) }
 
 /// Confined to one clipboard connection's worker. Incomplete files never reach the OS clipboard.
 public final class ClipboardInbox {
@@ -113,11 +115,12 @@ public final class ClipboardInbox {
     private var roots=[String](), expected=0, entries=Set<String>(), directories=Set<String>()
     private var declared: Int64=0, remaining: Int64=0
     private var file: FileHandle?, digest=SHA256()
+    private var imageFormat: String?
     public init(cache: URL) { self.cache=cache }
     public func abort() {
         try? file?.close(); file=nil
         if let folder { try? FileManager.default.removeItem(at: folder) }
-        folder=nil; id=nil; roots=[]; entries=[]; directories=[]; remaining=0; declared=0; received=0; total=0
+        imageFormat=nil; folder=nil; id=nil; roots=[]; entries=[]; directories=[]; remaining=0; declared=0; received=0; total=0
     }
     public func receive(_ packet: ClipboardPacket) throws -> ClipboardResult? {
         try packet.validate()
@@ -127,7 +130,7 @@ public final class ClipboardInbox {
             if let free=(try FileManager.default.attributesOfFileSystem(forPath: cache.path)[.systemFreeSize] as? NSNumber)?.int64Value, free < packet.total!+16_777_216 { throw ClipboardError.space }
             let next=cache.appendingPathComponent(UUID().uuidString,isDirectory: true)
             try FileManager.default.createDirectory(at: next,withIntermediateDirectories: false)
-            folder=next; id=packet.id; roots=packet.roots!; expected=packet.count!; total=packet.total!; return nil
+            folder=next; id=packet.id; imageFormat=packet.imageFormat; roots=packet.roots!; expected=packet.count!; total=packet.total!; return nil
         }
         guard id == packet.id, let folder else { return nil }
         switch packet.kind {
@@ -138,6 +141,7 @@ public final class ClipboardInbox {
             if parts.count > 1 { guard directories.contains(parts.dropLast().joined(separator: "/").lowercased()) else { throw ClipboardError.invalid } }
             let target=folder.appendingPathComponent(path)
             guard !FileManager.default.fileExists(atPath: target.path) else { throw ClipboardError.invalid }
+            guard imageFormat == nil || !packet.directory! else { throw ClipboardError.invalid }
             if packet.directory! { try FileManager.default.createDirectory(at: target,withIntermediateDirectories: false); directories.insert(canonical) }
             else {
                 guard declared <= total-packet.size! else { throw ClipboardError.invalid }; declared += packet.size!
@@ -153,7 +157,8 @@ public final class ClipboardInbox {
         case "commit":
             guard file == nil, entries.count == expected, received == total, declared == total,
                   roots.allSatisfy({ entries.contains($0.lowercased()) }) else { throw ClipboardError.incomplete }
-            let urls=roots.map { folder.appendingPathComponent($0) }; self.folder=nil; id=nil; return .files(urls)
+            let urls=roots.map { folder.appendingPathComponent($0) }; self.folder=nil; id=nil
+            return imageFormat == "png" ? .image(urls[0]) : .files(urls)
         case "cancel": abort()
         default: throw ClipboardError.invalid
         }

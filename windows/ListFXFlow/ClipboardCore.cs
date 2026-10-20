@@ -17,11 +17,12 @@ public sealed class ClipboardPacket(string kind,string id)
     public bool? Directory { get; set; }
     public byte[]? Bytes { get; set; }
     public string? Hash { get; set; }
+    public string? ImageFormat { get; set; }
     public void Validate() {
         if(!Guid.TryParseExact(Id,"D",out _)) throw new InvalidDataException("无效的剪贴板编号");
         bool valid=Kind switch {
             "text"=>Text!=null && Encoding.UTF8.GetByteCount(Text)<=524288,
-            "begin"=>Roots is { Length: >0 and <=256 } && Count>=Roots.Length && Count<=100000 && Total is >=0 and <=1099511627776 && Roots.All(p=>!p.Contains('/') && ClipboardPath.Valid(p)) && Roots.Distinct(StringComparer.OrdinalIgnoreCase).Count()==Roots.Length,
+            "begin"=>Roots is { Length: >0 and <=256 } && Count>=Roots.Length && Count<=100000 && Total is >=0 and <=1099511627776 && Roots.All(p=>!p.Contains('/') && ClipboardPath.Valid(p)) && Roots.Distinct(StringComparer.OrdinalIgnoreCase).Count()==Roots.Length && (ImageFormat==null || ImageFormat=="png" && Roots.Length==1 && Count==1 && Total is >0 and <=134217728),
             "entry"=>Path!=null && ClipboardPath.Valid(Path) && Size is >=0 and <=1099511627776 && Directory.HasValue && (Directory!=true || Size==0),
             "data"=>Bytes is { Length: >0 and <=196608 },
             "fileEnd"=>Hash?.Length==64 && Hash.All(Uri.IsHexDigit),
@@ -64,14 +65,14 @@ public sealed record ClipboardManifest(string[] Roots,List<ClipboardEntry> Entri
         return new(roots.ToArray(),entries,total);
     }
 }
-public sealed record ClipboardResult(string? Text=null,string[]? Files=null);
+public sealed record ClipboardResult(string? Text=null,string[]? Files=null,string? Image=null);
 
 public sealed class ClipboardInbox(string cache) : IDisposable
 {
     public string? Id { get; private set; }
     public long Received { get; private set; }
     public long Total { get; private set; }
-    private string? folder;
+    private string? folder,imageFormat;
     private string[] roots=[];
     private int expected;
     private long declared,remaining;
@@ -81,7 +82,7 @@ public sealed class ClipboardInbox(string cache) : IDisposable
     public void Abort() {
         file?.Dispose(); file=null; digest?.Dispose(); digest=null;
         if(folder!=null) { try { Directory.Delete(folder,true); } catch(IOException) {} catch(UnauthorizedAccessException) {} }
-        folder=null; Id=null; roots=[]; entries.Clear(); directories.Clear(); Received=Total=declared=remaining=0;
+        folder=null; imageFormat=null; Id=null; roots=[]; entries.Clear(); directories.Clear(); Received=Total=declared=remaining=0;
     }
     public ClipboardResult? Receive(ClipboardPacket p) {
         p.Validate();
@@ -91,7 +92,7 @@ public sealed class ClipboardInbox(string cache) : IDisposable
             var drive=new DriveInfo(System.IO.Path.GetPathRoot(System.IO.Path.GetFullPath(cache))!);
             if(drive.AvailableFreeSpace<p.Total!.Value+16777216) throw new IOException("接收端磁盘空间不足");
             folder=System.IO.Path.Combine(cache,Guid.NewGuid().ToString("D")); Directory.CreateDirectory(folder);
-            Id=p.Id; roots=p.Roots!; expected=p.Count!.Value; Total=p.Total.Value; return null;
+            Id=p.Id; imageFormat=p.ImageFormat; roots=p.Roots!; expected=p.Count!.Value; Total=p.Total.Value; return null;
         }
         if(Id!=p.Id || folder==null) return null;
         switch(p.Kind) {
@@ -100,6 +101,7 @@ public sealed class ClipboardInbox(string cache) : IDisposable
                 int separator=p.Path.LastIndexOf('/'); if(separator>=0 && !directories.Contains(p.Path[..separator])) throw new InvalidDataException("缺少父目录："+p.Path);
                 string target=System.IO.Path.Combine(folder,p.Path.Replace('/',System.IO.Path.DirectorySeparatorChar));
                 if(System.IO.Path.Exists(target)) throw new InvalidDataException("文件名称冲突");
+                if(imageFormat!=null && p.Directory==true) throw new InvalidDataException("图片不能包含目录");
                 if(p.Directory!.Value) { Directory.CreateDirectory(target); directories.Add(p.Path); }
                 else {
                     if(declared>Total-p.Size!.Value) throw new InvalidDataException("文件大小超出声明"); declared+=p.Size.Value;
@@ -114,7 +116,7 @@ public sealed class ClipboardInbox(string cache) : IDisposable
                 file.Dispose(); file=null; digest.Dispose(); digest=null; break;
             case "commit":
                 if(file!=null || entries.Count!=expected || declared!=Total || Received!=Total || !roots.All(entries.Contains)) throw new InvalidDataException("文件传输未完成");
-                var files=roots.Select(root=>System.IO.Path.Combine(folder,root)).ToArray(); folder=null; Id=null; return new(Files:files);
+                var files=roots.Select(root=>System.IO.Path.Combine(folder,root)).ToArray(); folder=null; Id=null; return imageFormat=="png" ? new(Image:files[0]) : new(Files:files);
             case "cancel": Abort(); break;
             default: throw new InvalidDataException();
         }

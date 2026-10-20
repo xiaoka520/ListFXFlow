@@ -16,7 +16,7 @@ public sealed class ClipboardLink : IDisposable
     private NetworkStream? stream;
     private CancellationTokenSource? outbound;
     private string? outboundId;
-    private bool outboundFiles;
+    private bool outboundFiles,supportsImages;
     private long generation,inboundGeneration;
     private Task? sending;
     public Func<ClipboardResult,long,Task<bool>>? OnResult;
@@ -30,10 +30,11 @@ public sealed class ClipboardLink : IDisposable
             using var deadline=CancellationTokenSource.CreateLinkedTokenSource(life.Token); deadline.CancelAfter(TimeSpan.FromSeconds(5));
             await tcp.ConnectAsync(remote,port,deadline.Token); stream=tcp.GetStream();
             byte[] cn=RandomNumberGenerator.GetBytes(32);
-            await Wire.WriteFrame(stream,Wire.Encode(new("hello") { Nonce=Convert.ToHexString(cn).ToLowerInvariant(),Auth=Convert.ToHexString(Wire.Proof(secret,"clipboard-client",cn,[])).ToLowerInvariant() }),deadline.Token);
+            await Wire.WriteFrame(stream,Wire.Encode(new("hello") { Features=["clipboard-image-v1"],Nonce=Convert.ToHexString(cn).ToLowerInvariant(),Auth=Convert.ToHexString(Wire.Proof(secret,"clipboard-client",cn,[])).ToLowerInvariant() }),deadline.Token);
             var challenge=Wire.Decode(await Wire.ReadFrame(stream,deadline.Token));
             byte[] sn=Convert.FromHexString(challenge.Nonce??"");
             if(challenge.Type!="challenge" || sn.Length!=32 || !CryptographicOperations.FixedTimeEquals(Convert.FromHexString(challenge.Auth??""),Wire.Proof(secret,"clipboard-server",cn,sn))) throw new CryptographicException("剪贴板连接认证失败");
+            supportsImages=challenge.Features?.Contains("clipboard-image-v1")==true;
             await Wire.WriteFrame(stream,Wire.Encode(new("finish") { Auth=Convert.ToHexString(Wire.Proof(secret,"clipboard-finish",cn,sn)).ToLowerInvariant() }),deadline.Token);
             secure=new SecureChannel(SHA256.HashData([..Encoding.UTF8.GetBytes("ListFXFlow/Clipboard/1"),..secret]),cn,sn,false);
             OnReady?.Invoke(); OnStatus?.Invoke("剪贴板已连接");
@@ -48,7 +49,7 @@ public sealed class ClipboardLink : IDisposable
                     if(result!=null) { bool applied=OnResult!=null && await OnResult(result,inboundGeneration); await Send(new(applied ? "done" : "cancel",packet.Id),life.Token); OnStatus?.Invoke(applied ? "剪贴板已就绪" : "本机剪贴板已变化，未覆盖新内容"); }
                     else if(packet.Kind=="begin") OnStatus?.Invoke("正在接收文件…");
                     else if(packet.Kind=="data" && inbox.Id==packet.Id && inbox.Received%(196608*8)<196608) OnStatus?.Invoke($"正在接收文件 · {inbox.Received/1024/1024} / {inbox.Total/1024/1024} MB");
-                } catch(Exception error) when(error is IOException or InvalidDataException or UnauthorizedAccessException or CryptographicException) {
+                } catch(Exception error) when(error is IOException or InvalidDataException or UnauthorizedAccessException or CryptographicException or FormatException or NotSupportedException or ArgumentException or InvalidOperationException) {
                     lock(inbox) inbox.Abort(); await Send(new("cancel",packet.Id),life.Token); OnStatus?.Invoke("剪贴板："+error.Message);
                 }
             }
@@ -69,24 +70,33 @@ public sealed class ClipboardLink : IDisposable
             await Wire.WriteFrame(stream,bytes,life.Token);
         } finally { writer.Release(); }
     }
-    public void LocalChanged(string? text,string[]? files,long version) {
+    public void LocalChanged(string? text,string[]? files,long version,byte[]? image=null) {
         if(life.IsCancellationRequested) return;
         Interlocked.Exchange(ref generation,version);
         string? previous; lock(inbox) { previous=inbox.Id; inbox.Abort(); }
         var previousOutbound=outbound; previousOutbound?.Cancel(); var cancel=CancellationTokenSource.CreateLinkedTokenSource(life.Token); outbound=cancel;
-        string id=Guid.NewGuid().ToString("D"); outboundId=id; outboundFiles=files!=null;
+        string id=Guid.NewGuid().ToString("D"); outboundId=id; outboundFiles=files!=null || image!=null;
         var prior=sending;
         sending=Task.Run(async()=> {
             // Finish cancelling the older revision before publishing the next one.
             if(prior!=null) { try { await prior; } catch(Exception) {} } previousOutbound?.Dispose();
             if(previous!=null) { try { await Send(new("cancel",previous),life.Token); } catch(Exception error) { if(!life.IsCancellationRequested) OnStatus?.Invoke(error.Message); } }
-            await Publish(id,text,files,cancel.Token);
+            await Publish(id,text,files,image,cancel.Token);
         });
     }
-    private async Task Publish(string id,string? text,string[]? files,CancellationToken token) {
+    private async Task Publish(string id,string? text,string[]? files,byte[]? image,CancellationToken token) {
         try {
             token.ThrowIfCancellationRequested();
-            if(files!=null) {
+            if(image!=null) {
+                if(!supportsImages) { OnStatus?.Invoke("远端版本不支持图片剪贴板，请更新两端应用"); return; }
+                var begin=new ClipboardPacket("begin",id) { Roots=["Clipboard.png"],Count=1,Total=image.Length,ImageFormat="png" }; begin.Validate();
+                await Send(begin,token); OnStatus?.Invoke("正在发送图片…");
+                await Send(new("entry",id) { Path="Clipboard.png",Size=image.Length,Directory=false },token);
+                for(int offset=0;offset<image.Length;offset+=196608)
+                    await Send(new("data",id) { Bytes=image[offset..Math.Min(offset+196608,image.Length)] },token);
+                await Send(new("fileEnd",id) { Hash=Convert.ToHexString(SHA256.HashData(image)).ToLowerInvariant() },token);
+                await Send(new("commit",id),token);
+            } else if(files!=null) {
                 var manifest=ClipboardManifest.Build(files,token);
                 await Send(new("begin",id) { Roots=manifest.Roots,Count=manifest.Entries.Count,Total=manifest.Total },token);
                 OnStatus?.Invoke("正在发送文件…");
