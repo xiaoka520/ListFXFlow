@@ -208,6 +208,7 @@ await using(var stream=new MemoryStream()) {
     } finally { if(Directory.Exists(cache)) Directory.Delete(cache,true); }
 }
 ClipboardImageTests.Run(Check,Reject);
+await TouchpadScrollTests.Run(Check);
 // Native touchpad messages, opt-in gating and ABI construction never call user32.
 {
     var contacts=new[] { new TouchpadContact(1,.3,.5),new TouchpadContact(2,.7,.5) };
@@ -289,7 +290,7 @@ if(args.Contains("--interop")) {
     string[] types=["display","layout","pointer","key","button","scroll","caps","touchpadControl","touchpad","touchpadFeedback","gameMode","gameModeRequest","relativePointer","reset"];
     var received=new HashSet<string>();
     var receivedTouchpad=new List<Message>();
-    Message? receivedFeedback=null,receivedGameMode=null,receivedRelative=null,receivedGameRequest=null;
+    Message? receivedFeedback=null,receivedGameMode=null,receivedRelative=null,receivedGameRequest=null,receivedScroll=null;
     var clipboardToken=new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
     bool pinned=false;
     var client=new FlowClient(PairedIdentity,()=>null,peer=>pinned=peer.Length==65,port:49334,discoveryPort:49335);
@@ -301,7 +302,7 @@ if(args.Contains("--interop")) {
             client.Send(new("pointer") { Active="windows",X=.75,Y=.25 });
             client.Send(new("key") { Key=4,Down=true });
             client.Send(new("button") { Button=0,Down=false });
-            client.Send(new("scroll") { Dx=-20,Dy=40 });
+            client.Send(new("scroll") { Dx=-1.0/3,Dy=2.0/3 });
             client.Send(new("caps") { Down=true });
             client.Send(new("gameMode") {Down=true,Phase="manual",Active="windows",X=.75,Y=.25});
             client.Send(new("relativePointer") {Dx=37.5,Dy=-9});
@@ -314,12 +315,13 @@ if(args.Contains("--interop")) {
             client.Send(new("reset"));
         }
     };
-    client.OnMessage=m=> { if(m.Type=="clipboardReady") clipboardToken.TrySetResult(Convert.FromHexString(m.Nonce!)); lock(received) { if(m.Type=="touchpad")receivedTouchpad.Add(m);if(m.Type=="touchpadFeedback")receivedFeedback=m;if(m.Type=="gameMode")receivedGameMode=m;if(m.Type=="relativePointer")receivedRelative=m;if(m.Type=="gameModeRequest")receivedGameRequest=m;received.Add(m.Type); if(types.All(received.Contains)) completed.TrySetResult(); } };
+    client.OnMessage=m=> { if(m.Type=="clipboardReady") clipboardToken.TrySetResult(Convert.FromHexString(m.Nonce!)); lock(received) { if(m.Type=="touchpad")receivedTouchpad.Add(m);if(m.Type=="scroll")receivedScroll=m;if(m.Type=="touchpadFeedback")receivedFeedback=m;if(m.Type=="gameMode")receivedGameMode=m;if(m.Type=="relativePointer")receivedRelative=m;if(m.Type=="gameModeRequest")receivedGameRequest=m;received.Add(m.Type); if(types.All(received.Contains)) completed.TrySetResult(); } };
     var run=client.Connect(new BridgeAdapter("loopback",IPAddress.Loopback,IPAddress.Parse("255.0.0.0"),true));
     try {
         await completed.Task.WaitAsync(deadline.Token); Check(pinned,"Swift/.NET ECDH authenticated discovery and identity exchange");
         Check(types.All(received.Contains),"Swift/.NET fourteen encrypted message types including game lock and relative motion over real TCP");
         Check(receivedGameMode is {Down:true,Phase:"manual",Active:"windows",X:.75,Y:.25} && receivedRelative is {Dx:37.5,Dy:-9} && receivedGameRequest is {Down:false},"game lock snapshot, manual escape request and signed fractional relative motion survive Swift/.NET TCP");
+        Check(receivedScroll?.Dx==-1.0/3 && receivedScroll.Dy==2.0/3,"fractional two-finger scroll survives Swift/.NET encrypted TCP without rounding");
         Check(receivedTouchpad.Select(m=>m.Phase).SequenceEqual(new[]{"begin","change","end"}) &&
               receivedTouchpad[0].Contacts![0]==new TouchpadContact(1,.3,.5) && receivedTouchpad[1].Contacts![1]==new TouchpadContact(2,.8,.5) && receivedTouchpad[2].Contacts!.Length==0 && receivedTouchpad.All(m=>m.GestureEpoch==42),
               "native touchpad phases, stable contact IDs and precise coordinates survive Swift/.NET encryption");

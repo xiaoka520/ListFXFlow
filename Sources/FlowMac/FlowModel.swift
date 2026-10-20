@@ -45,10 +45,8 @@ final class FlowModel: ObservableObject {
     private var resumeOnWake = false
     private var sessionActive = true { didSet { input.touchpadSessionActive=sessionActive } }
     private var sleepPending = false
-    private var wakeGuardUntil = 0.0
     init(login:LoginConfiguration?=nil) {
         loginWindow=login != nil
-        wakeGuardUntil=ProcessInfo.processInfo.systemUptime+8
         preferredAddress=login?.preferredAddress ?? UserDefaults.standard.string(forKey:"lastBridgeAddress")
         if let login {
             server=FlowServer(identityProvider:{ try P256.KeyAgreement.PrivateKey(rawRepresentation:login.identity) },loadPeer:{ login.peer },savePeer:{ peer in guard peer==login.peer else { throw FlowMacError.changedPeer } },requirePinnedPeer:true)
@@ -132,14 +130,7 @@ final class FlowModel: ObservableObject {
         observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.handleWake() })
         observers.append(center.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.handleWake() })
         observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            guard let self else { return }
-            if self.autoStarting || self.resumeOnWake || ProcessInfo.processInfo.systemUptime < self.wakeGuardUntil {
-                self.updateTopology()
-                if self.listening { self.announceDisplay(); self.publishLayout() }
-                return
-            }
-            self.stop(reason: "显示器配置已变化，请重新启用共享。")
-            self.updateTopology()
+            self?.displayConfigurationChanged()
         })
         observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.permissions.refresh() })
         refreshBridge()
@@ -233,6 +224,21 @@ final class FlowModel: ObservableObject {
         autoStarting = false;bridgeRecovery.stop()
         server.stop(); input.stop(); connected = false; listening = false; status = reason
     }
+    private func displayConfigurationChanged() {
+        updateTopology()
+        // Sleep/lock recovery retains its own intent and session checks. A display
+        // notification must neither wake that session nor undo a manual stop.
+        guard !sleepPending, !resumeOnWake,
+              bridgeRecovery.restartAfterDisplayChange(now:ProcessInfo.processInfo.systemUptime) else { return }
+        let reason="显示器配置已变化 · 正在自动恢复共享…"
+        lifecycleLogger.notice("display-change restart scheduled connected=\(self.connected,privacy:.public) listening=\(self.listening,privacy:.public)")
+        lastStopReason=reason;status=reason
+        connected=false;listening=false;autoStarting=true
+        // Release held inputs and the old cursor anchor before using new bounds.
+        // The existing bridge timer restarts after the final notification settles;
+        // stop()/sleep/lock/reset/emergency can still cancel that retry normally.
+        server.stop();input.stop();clipboard.stop()
+    }
     func finish() { stop();input.finish() }
     private func sleepStop() {
         // Only sleep/display-sleep should auto-resume. A manual stop, lock, remote
@@ -243,7 +249,6 @@ final class FlowModel: ObservableObject {
     }
     private func handleWake() {
         refreshBridge()
-        wakeGuardUntil = ProcessInfo.processInfo.systemUptime + 8
         let locked = CGSessionCopyCurrentDictionary()
             .flatMap { ($0 as? [String: Any])?["CGSSessionScreenIsLocked" as String] as? Bool } ?? false
         sessionActive = !locked

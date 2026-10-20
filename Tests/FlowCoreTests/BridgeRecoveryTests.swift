@@ -24,4 +24,38 @@ final class BridgeRecoveryTests:XCTestCase {
         XCTAssertEqual(recovery.action(addresses:[],listening:false,now:12),.none)
         XCTAssertEqual(recovery.action(addresses:["10.0.0.2"],listening:false,now:20),.none)
     }
+    func testDisplayChangeRestartsWithUnchangedNetworkAddressAfterSettling() {
+        var recovery=BridgeRecovery();recovery.request();recovery.started(addresses:["10.0.0.2"])
+        XCTAssertTrue(recovery.restartAfterDisplayChange(now:10))
+        XCTAssertTrue(recovery.requested)
+        XCTAssertEqual(recovery.action(addresses:["10.0.0.2"],listening:false,now:10.9),.none)
+        XCTAssertEqual(recovery.action(addresses:["10.0.0.2"],listening:false,now:11),.start)
+        recovery.started(addresses:["10.0.0.2"])
+        XCTAssertEqual(recovery.action(addresses:["10.0.0.2"],listening:true,now:12),.none)
+    }
+    func testDisplayNotificationBurstPostponesRestartUntilFinalChange() {
+        var recovery=BridgeRecovery();recovery.request();recovery.started(addresses:["10.0.0.2"])
+        XCTAssertTrue(recovery.restartAfterDisplayChange(now:10))
+        XCTAssertTrue(recovery.restartAfterDisplayChange(now:10.8))
+        XCTAssertEqual(recovery.action(addresses:["10.0.0.2"],listening:false,now:11),.none)
+        XCTAssertEqual(recovery.action(addresses:["10.0.0.2"],listening:false,now:11.8),.start)
+    }
+    func testManualOrSafetyStopCancelsPendingDisplayRestart() {
+        var recovery=BridgeRecovery();recovery.request();recovery.started(addresses:["10.0.0.2"])
+        recovery.restartAfterDisplayChange(now:10)
+        recovery.stop()
+        XCTAssertEqual(recovery.action(addresses:["10.0.0.2"],listening:false,now:20),.none)
+        XCTAssertFalse(recovery.restartAfterDisplayChange(now:21))
+        XCTAssertEqual(recovery.action(addresses:["10.0.0.2"],listening:false,now:30),.none)
+    }
+    func testDisplayRestartWaitsForBridgeAndRetriesStartFailure() {
+        var recovery=BridgeRecovery();recovery.request()
+        recovery.restartAfterDisplayChange(now:10)
+        XCTAssertEqual(recovery.action(addresses:[],listening:false,now:11),.waitForAddress)
+        XCTAssertEqual(recovery.action(addresses:["10.0.0.3"],listening:false,now:12),.start)
+        recovery.failed(now:12)
+        XCTAssertTrue(recovery.requested)
+        XCTAssertEqual(recovery.action(addresses:["10.0.0.3"],listening:false,now:12.5),.none)
+        XCTAssertEqual(recovery.action(addresses:["10.0.0.3"],listening:false,now:13),.start)
+    }
 }

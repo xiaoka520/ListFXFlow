@@ -19,6 +19,7 @@ public sealed class InputEngine : IDisposable
     public Action? InjectionFailed;
     public Action<string>? OnTouchpadStatus;
     private readonly TouchpadWorkerClient touchpadWorker;
+    private readonly ScrollDiagnostics scrollDiagnostics=new("scroll-main");
     private int touchpadDrainScheduled;
     private string? touchpadCaptureError,touchpadWorkerStatus;
     public string[] Features=>["clipboard-v1","caps-v1","game-mode-v1"];
@@ -74,6 +75,7 @@ public sealed class InputEngine : IDisposable
     private void RefreshTouchpadOwnership() {
         bool wanted=TouchpadSuppressionPolicy.Wanted(enabled,Router.Active);
         touchpadWorker.Configure(enabled,wanted,suppressOnly:true);
+        scrollDiagnostics.Context=$"active={Router.Active} sharing={enabled} owned={touchpadWorker.Owned}";
     }
     private void UpdateTouchpadStatus()=>OnTouchpadStatus?.Invoke(!enabled ? "共享已停止 · 本机手势正常" :
         Router.Active=="windows" ? "本机手势正常 · 控制 Mac 时自动屏蔽" :
@@ -90,11 +92,17 @@ public sealed class InputEngine : IDisposable
                 touchpadCaptureError=packet.Status;UpdateTouchpadStatus();
             } else if(packet.Kind=="state") {
                 touchpadCaptureError=null;touchpadWorkerStatus=packet.Status;UpdateTouchpadStatus();
+            } else if(packet.Kind=="scroll" && packet.Input is {} scroll && TouchpadScroll.CanForward(enabled,Router.Active,touchpadWorker.Owned,scroll,physicalKeys.Contains(224) || physicalKeys.Contains(228))) {
+                scrollDiagnostics.Count(ScrollStage.WorkerReceived);scrollDiagnostics.Count(ScrollStage.WorkerForwarded);
+                outgoingScrollX+=scroll.Dx!.Value;outgoingScrollY+=scroll.Dy!.Value;frameClock.Start();
+            } else if(packet.Kind=="scroll") {
+                scrollDiagnostics.Count(ScrollStage.WorkerReceived);scrollDiagnostics.Count(ScrollStage.WorkerDropped);
             }
-            // Forwarding is hidden. Contacts and injection receipts never cross
+            // Gesture mapping is hidden. Contacts and injection receipts never cross
             // the network even if an older worker unexpectedly produces them.
         }
         if(touchpadWorker.HasPending)ScheduleTouchpadDrain();
+        scrollDiagnostics.Context=$"active={Router.Active} sharing={enabled} owned={touchpadWorker.Owned}";
     }
     private readonly Native.Hook mouseCallback,keyboardCallback;
     private IntPtr mouseHook,keyboardHook;
@@ -232,11 +240,13 @@ public sealed class InputEngine : IDisposable
     {
         if(code<0) return Native.CallNextHookEx(mouseHook,code,message,data);
         var m=Marshal.PtrToStructure<Native.MouseHook>(data); int kind=message.ToInt32();
+        if(enabled && Router.Active=="mac" && m.Extra!=Native.Marker && kind is 0x20a or 0x20e)scrollDiagnostics.Count(ScrollStage.HookWheel);
         if(m.Extra==Native.Marker || (m.Flags&1)!=0) { previous=m.Point; return Native.CallNextHookEx(mouseHook,code,message,data); }
         if(!enabled) { previous=m.Point; return Native.CallNextHookEx(mouseHook,code,message,data); }
         bool remote=Router.Active!="windows";
         // Keep the desktop pointer exactly where it left Windows. WM_INPUT supplies
-        // movement, buttons and wheel in device order while these legacy events are blocked.
+        // movement, buttons and wheel (including device-zero touchpad wheel)
+        // while these legacy events are blocked. Worker-local wheel is a fallback.
         if(remote) return (IntPtr)1;
         if(kind==0x200) {
             // SetCursorPos is used for hover movement. If it generates a low-level
@@ -301,9 +311,11 @@ public sealed class InputEngine : IDisposable
             if((mouse.ButtonFlags&down)!=0) RawButton(button,true);
             if((mouse.ButtonFlags&up)!=0) RawButton(button,false);
         }
-        double amount=unchecked((short)mouse.ButtonData)/3.0;
-        double dy=(mouse.ButtonFlags&0x400)!=0 ? amount : 0,dx=(mouse.ButtonFlags&0x800)!=0 ? -amount : 0;
-        if((dx!=0 || dy!=0) && !TouchpadSuppressionPolicy.DropRawWheel(enabled,Router.Active,touchpadWorker.Owned,input.Header.Device)) {
+        // A zero device handle is valid precision-touchpad input. Native ownership
+        // alone never proves another path has forwarded this wheel event.
+        if(TouchpadScroll.FromRaw(input) is {} wheelInput) {
+            double dx=wheelInput.Dx!.Value,dy=wheelInput.Dy!.Value;
+            scrollDiagnostics.Count(input.Header.Device==0 ? ScrollStage.RawTouchpad:ScrollStage.RawMouse);
             if(Router.Active!="windows") {
                 outgoingScrollX+=dx; outgoingScrollY+=dy; frameClock.Start();
             }
@@ -373,6 +385,7 @@ public sealed class InputEngine : IDisposable
     private void FlushOutgoingScroll() {
         if(outgoingScrollX!=0 || outgoingScrollY!=0) {
             var packet=new Message("scroll") { Dx=outgoingScrollX,Dy=outgoingScrollY };
+            scrollDiagnostics.Count(ScrollStage.SentFrame);
             outgoingScrollX=outgoingScrollY=0; Send?.Invoke(packet);
         }
     }
@@ -489,7 +502,7 @@ public sealed class InputEngine : IDisposable
     public void Stop() { if(!disposed) dispatcher.Invoke(StopCore); }
     public void Dispose() {
         if(disposed) return;
-        performanceTimer.Dispose(); dispatcher.Invoke(()=> { gameTimer.Stop();StopCore(); }); frameClock.Dispose(); touchpadWorker.Dispose();injector.Dispose(); SavePerformance(); disposed=true;
+        performanceTimer.Dispose(); dispatcher.Invoke(()=> { gameTimer.Stop();StopCore(); }); frameClock.Dispose(); touchpadWorker.Dispose();injector.Dispose();scrollDiagnostics.Dispose(); SavePerformance(); disposed=true;
         dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
         inputThread.Join(1000);
     }

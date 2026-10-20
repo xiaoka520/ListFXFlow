@@ -4,5 +4,7 @@ namespace ListFXFlow;
 /// forwarding preferences or the receiving Mac's gesture capabilities.
 internal static class TouchpadSuppressionPolicy {
     internal static bool Wanted(bool sharing,string active)=>sharing && active=="mac";
-    internal static bool DropRawWheel(bool sharing,string active,bool owned,nint device)=>Wanted(sharing,active) && owned && device==0;
+    // Suppressing global three/four-finger gestures does not require opting the
+    // foreground window into two-finger pointers, which disables default scrolling.
+    internal static bool CaptureTwoFingerPointers(bool suppressOnly)=>!suppressOnly;
 }

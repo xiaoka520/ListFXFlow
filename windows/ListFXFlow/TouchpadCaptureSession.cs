@@ -20,6 +20,7 @@ internal sealed class TouchpadCaptureSession : IDisposable {
     private readonly Action<string> warning;
     private readonly Action<string> activity;
     private readonly bool suppressOnly;
+    private readonly ScrollDiagnostics scrollDiagnostics=new("scroll-worker");
     private bool active,disposed,flushQueued;
     private long generation;
     private string? readFailure;
@@ -28,7 +29,7 @@ internal sealed class TouchpadCaptureSession : IDisposable {
     internal bool Armed=>active && window.Foreground && controller.Enabled && (controller.SupportedGestures&All)==All;
     internal bool Active=>active;
     internal string ForegroundDescription=>window.ForegroundDescription;
-    internal TouchpadCaptureSession(Dispatcher dispatcher,Action<TouchpadContact[]> contacts,Action<string> warning,Action<string> activity,bool suppressOnly=false) {
+    internal TouchpadCaptureSession(Dispatcher dispatcher,Action<TouchpadContact[]> contacts,Action<string> warning,Action<string> activity,bool suppressOnly=false,Action<Message>? scroll=null) {
         this.dispatcher=dispatcher;this.contacts=contacts;this.warning=warning;this.activity=activity;
         this.suppressOnly=suppressOnly;
         TouchpadDiagnostics.Write("worker","SDK capture: checking API availability");
@@ -39,7 +40,10 @@ internal sealed class TouchpadCaptureSession : IDisposable {
             controller.PointerPressed+=OnPoint;controller.PointerMoved+=OnPoint;controller.PointerReleased+=OnPoint;
             controller.GlobalActionPerformed+=OnAction;
             controller.SupportedGestures=All;controller.Enabled=false;
-            window=new() { Pointer=suppressOnly ? null:ReadTwoFinger,Cancel=suppressOnly ? null:CancelContacts,ConsumePointers=suppressOnly };
+            window=new() { Pointer=suppressOnly ? null:ReadTwoFinger,Cancel=suppressOnly ? null:CancelContacts,PromoteScroll=suppressOnly,
+                CaptureTwoFingerPointers=TouchpadSuppressionPolicy.CaptureTwoFingerPointers(suppressOnly),
+                PointerObserved=()=>scrollDiagnostics.Count(ScrollStage.Pointer),WheelObserved=()=>scrollDiagnostics.Count(ScrollStage.WindowWheel),
+                Scroll=value=> { if(suppressOnly && CanRead()) { scrollDiagnostics.Count(ScrollStage.WorkerForwarded);scroll?.Invoke(value); } } };
             TouchpadDiagnostics.Write("worker","SDK capture: typed subscriptions and dedicated input window ready");
         } catch {
             try { controller.Enabled=false; } finally { Unsubscribe(); }
@@ -63,11 +67,13 @@ internal sealed class TouchpadCaptureSession : IDisposable {
         controller.Enabled=true;
         if(!controller.Enabled || (controller.SupportedGestures&All)!=All)throw new InvalidOperationException("原生触控板控制器未保持启用状态或手势范围。");
         active=true;readFailure=null;
+        scrollDiagnostics.Context="armed; two-finger="+(suppressOnly ? "system-wheel":"native-pointers");
         TouchpadDiagnostics.Write("worker",$"SDK capture armed; foreground={window.Foreground}; enabled={controller.Enabled}; supported={controller.SupportedGestures}");
         return true;
     }
     private bool CanRead()=>active && !disposed && window.Foreground;
     private void OnPoint(TouchpadGesturesController sender,PointerEventArgs args) {
+        scrollDiagnostics.Count(ScrollStage.GlobalPointer);
         if(suppressOnly) { args.Handled=true;return; } // No contact reads or forwarding.
         if(!CanRead())return;
         try {
@@ -109,12 +115,13 @@ internal sealed class TouchpadCaptureSession : IDisposable {
     }
     private void CancelContacts() { batch.Reset();twoFinger.Reset();if(active)contacts([]); }
     internal void Release() {
+        scrollDiagnostics.Context="released";
         active=false;generation++;flushQueued=false;batch.Reset();twoFinger.Reset();
         try { controller.Enabled=false; } finally { window?.Release(); }
     }
     public void Dispose() {
         if(disposed)return;disposed=true;
-        try { Release(); } finally { try { Unsubscribe(); } finally { window?.Dispose(); } }
+        try { Release(); } finally { try { Unsubscribe(); } finally { window?.Dispose();scrollDiagnostics.Dispose(); } }
     }
     private void Unsubscribe() {
         controller.PointerPressed-=OnPoint;controller.PointerMoved-=OnPoint;controller.PointerReleased-=OnPoint;controller.GlobalActionPerformed-=OnAction;

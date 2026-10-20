@@ -16,6 +16,11 @@ internal sealed class TouchpadWorkerQueue(int capacity=128) {
     internal bool Offer(TouchpadWorkerPacket packet) {
         lock(gate) {
             if(packets.Last is {Value:var old} && old.Epoch==packet.Epoch && old.Kind==packet.Kind) {
+                if(packet.Kind=="scroll" && packet.Input is {Type:"scroll"} nextScroll && old.Input is {Type:"scroll"} priorScroll && priorScroll.Down==nextScroll.Down &&
+                   priorScroll.Dx!.Value*nextScroll.Dx!.Value>=0 && priorScroll.Dy!.Value*nextScroll.Dy!.Value>=0 &&
+                   Math.Abs(priorScroll.Dx.Value+nextScroll.Dx.Value)<=10000 && Math.Abs(priorScroll.Dy.Value+nextScroll.Dy.Value)<=10000) {
+                    priorScroll.Dx+=nextScroll.Dx;priorScroll.Dy+=nextScroll.Dy;return true;
+                }
                 if(packet.Kind=="heartbeat" || packet.Input is {Phase:"change"} next && old.Input is {Phase:"change"} prior && next.Contacts!.Select(c=>c.Id).SequenceEqual(prior.Contacts!.Select(c=>c.Id))) {
                     packets.Last.Value=packet;return true;
                 }
@@ -49,8 +54,9 @@ internal static class TouchpadWorkerWire {
         if(count is <=0 or >8192)throw new InvalidDataException("Invalid touchpad worker frame size");
         byte[] bytes=new byte[count];await stream.ReadExactlyAsync(bytes,token);
         var packet=JsonSerializer.Deserialize<TouchpadWorkerPacket>(bytes,new JsonSerializerOptions {MaxDepth=12})??throw new InvalidDataException("Empty worker packet");
-        if(packet.Kind is not ("configure" or "activate" or "foregroundRequest" or "stop" or "reset" or "input" or "feedback" or "ready" or "state" or "heartbeat" or "error" or "captureWarning") || packet.Status?.Length>1024)throw new InvalidDataException("Invalid worker packet");
-        if(packet.Input is {} input) { if(input.Type!=(packet.Kind=="feedback" ? "touchpadFeedback":"touchpad"))throw new InvalidDataException("Invalid worker input");input.Validate(); }
+        if(packet.Kind is not ("configure" or "activate" or "foregroundRequest" or "stop" or "reset" or "input" or "scroll" or "feedback" or "ready" or "state" or "heartbeat" or "error" or "captureWarning") || packet.Status?.Length>1024)throw new InvalidDataException("Invalid worker packet");
+        if(packet.Kind=="scroll" && packet.Input==null)throw new InvalidDataException("Missing worker scroll");
+        if(packet.Input is {} input) { if(input.Type!=(packet.Kind switch {"feedback"=>"touchpadFeedback","scroll"=>"scroll",_=>"touchpad"}))throw new InvalidDataException("Invalid worker input");input.Validate(); }
         return packet;
     }
 }

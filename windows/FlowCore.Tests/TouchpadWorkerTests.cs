@@ -25,6 +25,8 @@ internal static class TouchpadWorkerTests {
                 if(mode=="suppression") {
                     if(!packet.SuppressOnly)throw new Exception("Suppression mode was lost over IPC");
                     await TouchpadWorkerWire.Write(pipe,new("state",epoch,Owned:remote,Status:remote ? "suppressed":"local"),CancellationToken.None);
+                    if(remote)await TouchpadWorkerWire.Write(pipe,new("scroll",epoch,Input:new("scroll") {Dx=-1.0/3,Dy=2.0/3}),CancellationToken.None);
+                    else await TouchpadWorkerWire.Write(pipe,new("scroll",epoch-1,Input:new("scroll") {Dx=100,Dy=100}),CancellationToken.None);
                     continue;
                 }
                 if(mode=="foreground" && remote) {
@@ -81,14 +83,17 @@ internal static class TouchpadWorkerTests {
         using(var client=new TouchpadWorkerClient(()=>{},pipe=>Launch(pipe,"suppression"),1500)) {
             client.Configure(true,true,suppressOnly:true);
             await Wait(()=>client.Owned);
-            var received=new List<TouchpadWorkerPacket>();while(client.TryTake(out var packet))received.Add(packet!);
-            check(received.Any(p=>p.Status=="suppressed") && received.All(p=>p.Input==null),"suppression-only configuration crosses real IPC without forwarding contact frames");
+            var received=new List<TouchpadWorkerPacket>();
+            await Wait(()=> {while(client.TryTake(out var packet))received.Add(packet!);return received.Any(p=>p.Kind=="scroll");});
+            check(received.Any(p=>p.Status=="suppressed") && received.All(p=>p.Input==null || p.Input.Type=="scroll"),"suppression-only configuration crosses real IPC with scrolling but without contact frames");
+            var scroll=received.Single(p=>p.Kind=="scroll").Input!;
+            check(scroll.Dx==-1.0/3 && scroll.Dy==2.0/3,"two-finger fractional horizontal and vertical scroll survive isolated worker IPC");
             client.Configure(true,false,suppressOnly:true);
             await Wait(()=> {while(client.TryTake(out var p))if(p!.Status=="local")return true;return false;});
             client.Post(new("touchpad") {Phase="begin",Contacts=contacts});
             await Task.Delay(100);
-            bool injected=false;while(client.TryTake(out var p))injected|=p!.Status=="fake-injected";
-            check(!client.Owned && !injected,"suppression mode releases local ownership and rejects obsolete gesture injection");
+            bool injected=false,staleScroll=false;while(client.TryTake(out var p)) { injected|=p!.Status=="fake-injected";staleScroll|=p.Kind=="scroll"; }
+            check(!client.Owned && !injected && !staleScroll,"suppression mode releases local ownership and rejects obsolete gesture injection and stale scroll");
             client.Configure(false,false,suppressOnly:true);await client.Completion.WaitAsync(TimeSpan.FromSeconds(4));
         }
         int grants=0,grantedPid=0,workerPid=0;

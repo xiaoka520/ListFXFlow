@@ -390,3 +390,39 @@ dotnet publish windows/ListFXFlow/ListFXFlow.csproj -c Release -r win-x64 \
 - 从 GitHub run 39239489305 读取真实失败日志：Windows job 成功；Mac 在 Sources/FlowMac/App.swift:208 的除法出现 Double / CGFloat 重载歧义，swift test 编译失败，打包步骤未执行。排列几何显式统一 Double 并在 CGSize 边界转换；本地 Swift 测试和 release 打包通过。workflow 增加工具链信息、Windows 原生格式测试、CI 显式 ad-hoc 签名和缺失产物报错；YAML 解析与 diff 空白检查通过。未推送或触发新云端 run，不能宣称 Actions 已在线转绿。
 - VERSION 保持 0.2.3，只将 BUILD 增至 37；保留 build 36 的高斯模糊 DMG 背景。没有修改键鼠、手势、Caps/IME、系统网络配置或已安装应用。
 - 成品验证通过：Mac strict/deep 签名、DMG 校验/只读挂载、build 37、背景和 Finder 位置、Applications 链接、ZIP CRC/执行文件一致、内嵌登录包 0.2.3.37；Windows 主程序/安装器 x64、程序集版本、安装器内嵌 JSON+ZIP 的大小和 SHA-256 与实际主程序一致。四个最终安装包的 SHA256SUMS 均通过。旧 Mac 36 / Windows 34 成品已移入废纸篓，artifacts 保留双端 37。
+
+
+## Mac 0.2.3 build 38 — 显示器配置变化后自动重启共享
+
+日期：2026-10-20，Asia/Shanghai。
+
+- 根因：桌面 FlowModel 在显示器参数通知中调用用户停止路径，清除 BridgeRecovery.requested，导致后续网桥轮询无法自动启动。
+- 改为保留共享意图、释放旧输入和指针停放状态、关闭旧连接与剪贴板，更新主显示器几何；通过现有网桥恢复定时器，在最后一次配置通知稳定至少 1 秒后重建输入和监听。定时器为 1 秒周期，实际启动会在约 1–2 秒后尝试；Windows 沿用已有自动重连。连续通知延后同一次恢复，不引入额外定时器。
+- 手动停止、紧急停止、远端 reset 或休眠/锁屏停止会取消待重启任务。未开启共享时的配置通知只更新几何；休眠/锁屏等待唤醒/解锁的会话保留原有恢复条件。网桥地址未就绪时继续等待，启动失败继续按原退避策略重试。移除旧 8 秒显示器通知豁免，统一为防抖恢复。
+- Swift 67 项测试通过；新增覆盖相同网络地址下显示器重配恢复、通知突发延后启动、用户/安全停止取消恢复、无地址等待及启动失败重试。Release 构建通过，Mac 应用 strict/deep 签名、DMG 校验/只读挂载、背景与图标布局、Applications 链接、ZIP CRC/执行文件一致、内嵌登录包版本 0.2.3.38 和 payload build 38 检查通过。
+- VERSION 保持 0.2.3；只增加 Mac build 38，Windows build 37 原样保留且哈希与上一份清单一致。旧 Mac 37 成品移至废纸篓；未替换已安装应用、未触发真实显示器切换，实体双端拔插/切主屏后的恢复仍需验收。
+
+## Windows 0.2.3 build 39 — 恢复触控板到 Mac 的双指滚动
+
+日期：2026-10-20，Asia/Shanghai。
+
+- 根因：suppressOnly 模式下输入窗口直接吃掉双指 WM_POINTER；主进程为避免重复又丢弃已接管触控板的 device=0 兼容滚轮，两条路径都没有向 Mac 发送滚动。
+- 将双指生命周期交给 DefWindowProc，系统识别后生成 WM_MOUSEWHEEL / WM_MOUSEHWHEEL。窗口消费本机消息，通过私有 IPC scroll 类型送到父进程；确认共享、Mac 所有权与原生接管后进入既有滚动帧队列。三指及以上 SDK 接管和屏蔽保留，不读取触点或注册虚拟设备，不启用隐藏的手势映射。
+- 保留分数增量与水平/垂直正负方向；仅对同 epoch、同修饰标记、同方向连续滚动求和，反向、状态和所有权变化为边界。已接管的 device=0 原始副本仍丢弃，实体鼠标继续走 WM_INPUT，避免双倍滚动。返回本机、停止、接管丢失或旧 epoch 的滚动不再发往 Mac。系统捏合产生的 Ctrl+wheel 不作为平移；真实按住 Ctrl 滚动仍可转发。
+- Windows 核心 280 项检查通过，Swift/.NET 真实 TCP 互通共 301 项检查通过，包含分数滚动的加密往返。新增覆盖 10,000 个细小样本距离守恒与队列有界、方向/epoch 边界、IPC framing/类型校验、真实隔离辅助进程双轴分数滚动与旧所有权消息丢弃。WPF Release 编译和 x64 self-contained 发布通过，零警告/错误。
+- 当前 Mac 环境不能执行 Windows 原生触控板识别。笔记本双指、水平、边滚边移动及三/四指仍被屏蔽需实体双端验收。Mac 保留 build 38；VERSION 保持 0.2.3，仅 Windows BUILD 增至 39。
+- 成品检查通过：Windows x64 程序与安装器的程序集版本 0.2.3.39，内嵌 payload 版本、大小和 SHA-256 一致，免安装 ZIP CRC 与程序内容一致，最终四包校验通过。旧 Windows 37 成品移至废纸篓；Mac 38 两个安装包哈希不变。未替换或重启当前已安装应用。
+
+参考：[微软 RegisterTouchpadCapableWindow 说明](https://learn.microsoft.com/en-us/windows/win32/input-precisiontouchpad/registertouchpadcapable)。
+
+## Windows 0.2.3 build 40 — 修正已接管触控板滚轮仍被过滤
+
+日期：2026-10-20，Asia/Shanghai。
+
+- 实体反馈：Windows 实体鼠标滚轮可以控制 Mac，双指在两端都没有滚动；用户提供的 build 39 日志确认原生前台和 SDK 接管成功，没有证明滚动已生成。证据整理见 diagnostics/2026-10-20-touchpad-scroll.md。
+- 保留原有实体鼠标原始输入路径。移除“只要辅助进程 Owned 就丢弃所有 device=0 滚轮”的判断；原始转换现明确接受触控板零设备句柄，保留双轴符号与分数增量。此改动不依赖双指消息先送达辅助窗口。
+- suppressOnly 前台窗口不再注册双指触点接管，Windows 默认识别双指动作；独立 SDK 控制器仍接管三指及以上全局手势。窗口显示准备与触点注册分开，避免取消双指注册后反复显示窗口。未知的窗口内滚动仍可通过已有 IPC 兜底，但不向 Windows 应用传递。
+- 新增 touchpad-scroll-main.log / touchpad-scroll-worker.log 后台计数：窗口/全局指针、普通滚轮、原始触控板/鼠标滚轮、辅助进程收到/接受/丢弃及发送帧。热输入路径只更新原子计数，不进行文件写入；每秒在后台输出有变化的累计快照，不记录坐标、滚动量或按键/文本。发送帧计数仅代表提交既有发送回调，不代表 Mac 或应用已接受。
+- Windows 核心 283 项检查通过，Swift/.NET TCP 互通 304 项检查通过。新增覆盖 device=0 双轴分数滚动不被丢弃、实体鼠标转换一致、普通移动不会变成滚动，以及 10,000 次并发计数的精确性和无同步日志写入。WPF 编译与 x64 自包含发布通过，零警告/错误。
+- VERSION 保持 0.2.3；Windows build 40，Mac 38 保留。原生 Windows 26300 触控板行为仍需用户实机验收，本次不以核心/模拟进程/TCP 结果宣称已完成原生验收。未替换已安装应用或更改系统设置。
+- 成品检查通过：Windows x64 安装器和程序版本 0.2.3.40，内嵌载荷版本/大小/SHA-256 与实际程序一致；免安装 ZIP CRC、程序内容、最新说明文件与无重复条目检查通过。最终四包 SHA256SUMS 校验通过，Mac 38 哈希不变，旧 Windows 39 成品移至废纸篓。

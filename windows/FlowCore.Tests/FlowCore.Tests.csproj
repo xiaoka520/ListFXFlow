@@ -6,6 +6,8 @@
     <Compile Include="../ListFXFlow/TouchpadFocusLease.cs" Link="TouchpadFocusLease.cs" />
     <Compile Include="../ListFXFlow/TouchpadActivationRetry.cs" Link="TouchpadActivationRetry.cs" />
     <Compile Include="../ListFXFlow/TouchpadSuppressionPolicy.cs" Link="TouchpadSuppressionPolicy.cs" />
+    <Compile Include="../ListFXFlow/TouchpadScroll.cs" Link="TouchpadScroll.cs" />
+    <Compile Include="../ListFXFlow/ScrollDiagnostics.cs" Link="ScrollDiagnostics.cs" />
     <Compile Include="../ListFXFlow/Touchpad.cs" Link="Touchpad.cs" />
     <Compile Include="../ListFXFlow/TouchpadPointerFrames.cs" Link="TouchpadPointerFrames.cs" />
     <Compile Include="../ListFXFlow/TouchpadFeedbackCounter.cs" Link="TouchpadFeedbackCounter.cs" />

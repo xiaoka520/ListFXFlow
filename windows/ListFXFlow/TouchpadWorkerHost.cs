@@ -108,7 +108,9 @@ internal sealed class TouchpadWorkerHost : IDisposable {
             Emit(new("state",epoch,Status:suppressOnly ? "正在屏蔽本机多指手势…":"正在准备 SDK 触控板捕获…"));
             capture??=new TouchpadCaptureSession(dispatcher,contacts=> {
                 if(!suppressOnly && sender.Sample(contacts,remote && capture?.Armed==true) is {} input)Emit(new("input",epoch,Input:input));
-            },ReportReadError,status=>Emit(new("state",epoch,Owned:capture?.Armed==true,Status:status)),suppressOnly);
+            },ReportReadError,status=>Emit(new("state",epoch,Owned:capture?.Armed==true,Status:status)),suppressOnly,scroll=> {
+                if(suppressOnly && remote && capture?.Armed==true)Emit(new("scroll",epoch,Input:scroll));
+            });
             capture.PrepareAcquire();
             activation.Begin(epoch,Environment.TickCount64);RequestForeground();
         } else {
