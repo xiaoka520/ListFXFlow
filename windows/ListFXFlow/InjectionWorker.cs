@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace ListFXFlow;
 
-internal readonly record struct InjectionWork(Native.Input Input,bool Pointer=false,bool SetCursor=false,int X=0,int Y=0,long QueuedAt=0,bool Relative=false)
+internal readonly record struct InjectionWork(Native.Input Input,bool Pointer=false,bool SetCursor=false,int X=0,int Y=0,long QueuedAt=0,bool Relative=false,long DesktopEpoch=0,bool DesktopCleanup=false)
 {
     public bool Wheel=>Input.Type==0 && (Input.Union.Mouse.Flags is 0x800 or 0x1000);
 }
@@ -58,7 +58,7 @@ internal sealed class InjectionWorker : IDisposable
             for(var n=pending.First;n!=null;) {
                 var next=n.Next;
                 // Lock transitions are global, independent of pointer ownership.
-                if(!(n.Value.Input.Type==1 && n.Value.Input.Union.Key.Scan==58)) pending.Remove(n);
+                if(!n.Value.DesktopCleanup && !(n.Value.Input.Type==1 && n.Value.Input.Union.Key.Scan==58)) pending.Remove(n);
                 n=next;
             }
         }

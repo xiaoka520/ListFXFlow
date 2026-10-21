@@ -21,7 +21,7 @@ dotnet run --project windows/ClipboardNative.Tests/ClipboardNative.Tests.csproj 
 ./scripts/build-windows.ps1
 ```
 
-输出免安装 ZIP 与 `artifacts/ListFXFlow-Setup-x64-<版本>-b<构建>.exe`。安装包把自包含的 `ListFXFlow.exe` 嵌入自身，安装到当前用户目录并注册卸载入口，不需要管理员权限。
+输出免安装 ZIP 与 `artifacts/ListFXFlow-Setup-x64-<版本>-b<构建>.exe`。安装包把自包含的 `ListFXFlow.exe` 嵌入自身，安装到当前用户目录并注册卸载入口，安装器和应用均需要管理员授权。
 
 也可以在 Mac 用 .NET SDK 交叉构建 Windows 程序（不能代替 Windows 上的输入和 UI 验收）：
 

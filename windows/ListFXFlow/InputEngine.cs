@@ -17,6 +17,8 @@ public sealed class InputEngine : IDisposable
     public Action? Emergency;
     public Action<string>? OnFocus;
     public Action? InjectionFailed;
+    public Action<bool>? OnDesktopPause;
+    private readonly DesktopInputGate desktopInput=new();
     public Action<string>? OnTouchpadStatus;
     private readonly TouchpadWorkerClient touchpadWorker;
     private readonly ScrollDiagnostics scrollDiagnostics=new("scroll-main");
@@ -86,9 +88,9 @@ public sealed class InputEngine : IDisposable
         });
     }
     private void RefreshTouchpadOwnership() {
-        bool wanted=TouchpadSuppressionPolicy.Wanted(enabled,Router.Active);
+        bool wanted=TouchpadSuppressionPolicy.Wanted(enabled && !desktopInput.Paused,Router.Active);
         if(!wanted || !ForwardGestures)CancelGestureStroke();
-        touchpadWorker.Configure(enabled,wanted,suppressOnly:true,forwardGestures:ForwardGestures);
+        touchpadWorker.Configure(enabled && !desktopInput.Paused,wanted,suppressOnly:true,forwardGestures:ForwardGestures);
         scrollDiagnostics.Context=$"active={Router.Active} sharing={enabled} owned={touchpadWorker.Owned}";
     }
     private void UpdateTouchpadStatus()=>OnTouchpadStatus?.Invoke(!enabled ? "共享已停止 · 本机手势正常" :
@@ -101,6 +103,7 @@ public sealed class InputEngine : IDisposable
     private void DrainTouchpad() {
         Interlocked.Exchange(ref touchpadDrainScheduled,0);
         for(int i=0;i<64 && touchpadWorker.TryTake(out var packet);i++) {
+            if(desktopInput.Paused)continue;
             if(packet!.Kind=="foregroundRequest") {
                 if(TouchpadSuppressionPolicy.Wanted(enabled,Router.Active))touchpadWorker.GrantForeground(packet.Epoch);
             } else if(packet.Kind is "error" or "captureWarning") {
@@ -162,6 +165,7 @@ public sealed class InputEngine : IDisposable
             }
             int[] buttons=[1,2,4,5,6];
             for(int b=0;b<buttons.Length;b++) if(Native.GetAsyncKeyState(buttons[b])<0) physicalButtons.Add(b);
+            RefreshDesktop();
         }
     }
     public InputEngine() {
@@ -176,7 +180,7 @@ public sealed class InputEngine : IDisposable
         touchpadWorker=new TouchpadWorkerClient(ScheduleTouchpadDrain);
         injector=new InjectionWorker(InjectNative,error=>FailInjection());
         dispatcher.Invoke(()=> {
-            gameTimer=new DispatcherTimer(TimeSpan.FromMilliseconds(100),DispatcherPriority.Background,(_,_)=>RefreshGameProtection(),dispatcher);
+            gameTimer=new DispatcherTimer(TimeSpan.FromMilliseconds(100),DispatcherPriority.Background,(_,_)=> { RefreshDesktop();if(!desktopInput.Paused)RefreshGameProtection(); },dispatcher);
             gameTimer.Start();
         });
         performanceTimer=new System.Threading.Timer(_=>SavePerformance(),null,5000,5000);
@@ -224,7 +228,7 @@ public sealed class InputEngine : IDisposable
     }
     private IntPtr Keyboard(int code,IntPtr message,IntPtr data)
     {
-        if(code<0 || !enabled) return Native.CallNextHookEx(keyboardHook,code,message,data);
+        if(code<0 || !enabled || desktopInput.Paused) return Native.CallNextHookEx(keyboardHook,code,message,data);
         var k=Marshal.PtrToStructure<Native.KeyboardHook>(data);
         if(k.Extra==Native.Marker || (k.Flags&0x10)!=0) return Native.CallNextHookEx(keyboardHook,code,message,data);
         bool down=(k.Flags&0x80)==0;
@@ -263,7 +267,7 @@ public sealed class InputEngine : IDisposable
         var m=Marshal.PtrToStructure<Native.MouseHook>(data); int kind=message.ToInt32();
         if(enabled && Router.Active=="mac" && m.Extra!=Native.Marker && kind is 0x20a or 0x20e)scrollDiagnostics.Count(ScrollStage.HookWheel);
         if(m.Extra==Native.Marker || (m.Flags&1)!=0) { previous=m.Point; return Native.CallNextHookEx(mouseHook,code,message,data); }
-        if(!enabled) { previous=m.Point; return Native.CallNextHookEx(mouseHook,code,message,data); }
+        if(!enabled || desktopInput.Paused) { previous=m.Point; return Native.CallNextHookEx(mouseHook,code,message,data); }
         bool remote=Router.Active!="windows";
         // Keep the desktop pointer exactly where it left Windows. WM_INPUT supplies
         // movement, buttons and wheel (including device-zero touchpad wheel)
@@ -306,6 +310,7 @@ public sealed class InputEngine : IDisposable
     }
     private void RawMouse(Native.RawMouseInput input,uint time)
     {
+        if(!enabled || desktopInput.Paused)return;
         var mouse=input.Mouse;
         bool virtualDesktop=(mouse.Flags&2)!=0;
         var delta=rawMotion.Read(input.Header.Device,mouse.Flags,mouse.X,mouse.Y,
@@ -350,6 +355,7 @@ public sealed class InputEngine : IDisposable
     }
     private void ReceiveCore(Message m)
     {
+        if(desktopInput.Paused && m.Type is not ("display" or "layout" or "reset"))return;
         if(m.Type is "key" or "button") FinishWheel();
         switch(m.Type) {
             case "display":
@@ -466,20 +472,77 @@ public sealed class InputEngine : IDisposable
                 maxQueueMs=stats.MaxQueueMs,maxNativeCallMs=stats.MaxCallMs }));
         } catch(Exception error) when(error is System.IO.IOException or UnauthorizedAccessException) { }
     }
+    private void RefreshDesktop() {
+        if(!enabled && !desktopInput.Paused)return;
+        if(!InputDesktop.Available()) { PauseForDesktop();return; }
+        if(!desktopInput.Paused)return;
+        queue.Clear();CancelFrame();injector.CancelPending();
+        desktopInput.Resume();
+        // Release successfully injected holds before accepting fresh remote input.
+        if(!PostNative(new(default,DesktopCleanup:true))) { FailInjection();return; }
+        if(enabled) {
+            try {
+                if(mouseHook!=0)Native.UnhookWindowsHookEx(mouseHook);
+                if(keyboardHook!=0)Native.UnhookWindowsHookEx(keyboardHook);
+                mouseHook=keyboardHook=0;rawMotion.Clear();StartCore();
+                ChangeFocus();
+                OnDesktopPause?.Invoke(false);
+            } catch(Exception) { FailInjection(); }
+        }
+    }
+    private void PauseForDesktop() {
+        if(disposed || !desktopInput.Pause())return;
+        dispatcher.BeginInvoke(DispatcherPriority.Send,new Action(()=> {
+            if(!desktopInput.Paused)return;
+            queue.Clear();CancelFrame();injector.CancelPending();CancelGestureStroke();
+            if(Router.Active=="mac") {
+                foreach(int key in physicalKeys)Send?.Invoke(new("key") {Key=key,Down=false});
+                foreach(int button in physicalButtons)Send?.Invoke(new("button") {Button=button,Down=false});
+            }
+            physicalKeys.Clear();physicalButtons.Clear();capsKeyHeld=false;gameShortcut.Reset();
+            injectedKeys.Clear();injectedButtons.Clear();
+            shield?.Hide();RefreshTouchpadOwnership();
+            if(enabled)OnDesktopPause?.Invoke(true);
+        }));
+    }
+    private bool PostNative(InjectionWork work) {
+        long epoch=desktopInput.Epoch;
+        return !desktopInput.Allows(epoch) || injector.Post(work with {DesktopEpoch=epoch});
+    }
     private void FailInjection() {
         if(disposed) return;
+        if(!InputDesktop.Available()) { PauseForDesktop();return; }
+        long epoch=desktopInput.Epoch;
         dispatcher.BeginInvoke(()=> {
-            if(injectionFailure)return;
+            if(injectionFailure || !enabled || !desktopInput.Allows(epoch))return;
             injectionFailure=true;SetEnabled(false);InjectionFailed?.Invoke();
         });
     }
     private void Inject(Native.Input input) {
-        if(!injector.Post(new InjectionWork(input))) FailInjection();
+        if(!PostNative(new InjectionWork(input))) FailInjection();
     }
     private void InjectNative(InjectionWork work) {
+        if(!desktopInput.Allows(work.DesktopEpoch))return;
+        if(!InputDesktop.Available()) { PauseForDesktop();return; }
+        if(work.DesktopCleanup) {
+            foreach(var release in desktopInput.Releases) {
+                if(!desktopInput.Allows(work.DesktopEpoch))return;
+                if(Native.SendInput(1,[release],Marshal.SizeOf<Native.Input>())!=1) {
+                    if(desktopInput.Allows(work.DesktopEpoch))FailInjection();
+                    return;
+                }
+                desktopInput.Delivered(release);
+            }
+            return;
+        }
         if(work.Pointer) pointerEcho=new(work.X,work.Y,Environment.TickCount64);
         bool done=work.Pointer && work.SetCursor && Native.SetCursorPos(work.X,work.Y);
-        if(!done && Native.SendInput(1,[work.Input],Marshal.SizeOf<Native.Input>())!=1) FailInjection();
+        if(!done) {
+            if(Native.SendInput(1,[work.Input],Marshal.SizeOf<Native.Input>())!=1) {
+                if(desktopInput.Allows(work.DesktopEpoch))FailInjection();
+            }
+            else desktopInput.Delivered(work.Input);
+        }
     }
     private void KeyEvent(int hid,bool down)
     {
@@ -498,13 +561,13 @@ public sealed class InputEngine : IDisposable
             Flags=0xc001,Extra=Native.Marker } } };
     }
     private void Absolute(double x,double y) {
-        if(!injector.Post(new InjectionWork(AbsoluteInput(x,y),true,false,(int)x,(int)y))) FailInjection();
+        if(!PostNative(new InjectionWork(AbsoluteInput(x,y),true,false,(int)x,(int)y))) FailInjection();
     }
     private void InjectPointer(Message m) {
         int x=(int)Math.Round(m.X!.Value*(Width-1)),y=(int)Math.Round(m.Y!.Value*(Height-1));
         // SendInput / SetCursorPos run on a different thread from low-level hooks.
         // Windows can deliver our hook callbacks while a native call is in flight.
-        if(!injector.Post(new InjectionWork(AbsoluteInput(x,y),true,injectedButtons.Count==0,x,y))) FailInjection();
+        if(!PostNative(new InjectionWork(AbsoluteInput(x,y),true,injectedButtons.Count==0,x,y))) FailInjection();
     }
     private void InjectRelative(double dx,double dy) {
         relativeRemainderX+=dx;relativeRemainderY+=dy;
@@ -512,7 +575,7 @@ public sealed class InputEngine : IDisposable
         relativeRemainderX-=x;relativeRemainderY-=y;
         if(x==0 && y==0)return;
         var input=new Native.Input {Type=0,Union=new Native.InputUnion {Mouse=new Native.MouseInput {X=x,Y=y,Flags=1,Extra=Native.Marker}}};
-        if(!injector.Post(new InjectionWork(input,Relative:true)))FailInjection();
+        if(!PostNative(new InjectionWork(input,Relative:true)))FailInjection();
     }
     private void ReleaseInjected() {
         foreach(int key in injectedKeys) KeyEvent(key,false);

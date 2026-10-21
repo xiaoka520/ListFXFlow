@@ -48,6 +48,11 @@ public partial class MainWindow : Window
         input.OnFocus=active => PostUi(()=> { activeDevice=active; FocusText.Text="当前控制 · "+(active=="mac" ? "Mac" : "Windows"); UpdateDiagram(); });
         input.OnLayout=value => PostUi(()=> { layout=value; UpdateDiagram(); });
         input.OnControl=m => { if(m.Type=="reset") PostUi(()=>Stop("Mac 已停止共享 · 已恢复本机控制")); };
+        input.OnDesktopPause=paused=>PostUi(()=> {
+            if(!connected)return;
+            StatusText.Text=paused ? "Windows 安全桌面 · 输入已暂停，返回桌面后自动恢复":"已连接 · 已恢复共享";
+            tray?.Update(StatusText.Text,true);
+        });
         input.InjectionFailed=() => PostUi(()=> { if(client!=null) Stop("Windows 拒绝了输入，请退出受保护界面；若要控制管理员窗口，需以同等权限运行。"); });
         Loaded+=(_,_) => UpdateDiagram();
         StateChanged+=(_,_) => { if(WindowState==WindowState.Minimized) Hide(); };

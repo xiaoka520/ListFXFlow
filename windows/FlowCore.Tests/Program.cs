@@ -436,4 +436,6 @@ if(args.Contains("--interop")) {
     try { while(true) silentSecure.Open(await Wire.ReadFrame(silentStream,deadline.Token)); }
     catch(EndOfStreamException) { Check(stopwatch.Elapsed.TotalSeconds is >=2.5 and <6,"Swift closes silent authenticated peer after heartbeat timeout"); }
 }
+DesktopInputTests.Run(Check);
+DesktopInputTests.Worker(Check);
 Console.WriteLine($"{passed} checks passed");

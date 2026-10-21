@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
   <ItemGroup>
+    <Compile Include="../ListFXFlow/InputDesktop.cs" Link="InputDesktop.cs" />
     <Compile Include="../ListFXFlow/PtpHidProtocol.cs" Link="PtpHidProtocol.cs" />
     <Compile Include="../ListFXFlow/PtpHidStrokeGate.cs" Link="PtpHidStrokeGate.cs" />
     <Compile Include="../ListFXFlow/PtpHidFrames.cs" Link="PtpHidFrames.cs" />
