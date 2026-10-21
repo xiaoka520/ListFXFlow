@@ -4,7 +4,7 @@ using System.Threading.Channels;
 
 namespace ListFXFlow;
 
-internal sealed record TouchpadWorkerPacket(string Kind,long Epoch=0,bool Remote=false,bool Owned=false,Message? Input=null,string? Status=null,bool SuppressOnly=false);
+internal sealed record TouchpadWorkerPacket(string Kind,long Epoch=0,bool Remote=false,bool Owned=false,Message? Input=null,string? Status=null,bool SuppressOnly=false,bool ForwardGestures=false);
 
 /// Bounded IPC buffering. Only consecutive updates to the same contacts merge;
 /// begin/end/cancel and ownership messages remain ordering barriers.

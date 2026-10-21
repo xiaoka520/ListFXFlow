@@ -26,8 +26,8 @@ final class FlowModel: ObservableObject {
     @Published var side: Side = .right
     @Published var offset: Double = 0
     @Published var topology = Topology()
-    @Published var touchpadEnabled=UserDefaults.standard.bool(forKey:"touchpadEnabled") {
-        didSet { UserDefaults.standard.set(touchpadEnabled,forKey:"touchpadEnabled");input.touchpadEnabled=touchpadEnabled;updateTouchpadStatus() }
+    @Published var touchpadEnabled=UserDefaults.standard.bool(forKey:"receiveWindowsGestures") {
+        didSet { UserDefaults.standard.set(touchpadEnabled,forKey:"receiveWindowsGestures");input.touchpadEnabled=touchpadEnabled;updateTouchpadStatus() }
     }
     @Published var touchpadStatus="默认关闭 · 两端开启后生效"
     private var touchpadActivity:String?
@@ -283,9 +283,8 @@ final class FlowModel: ObservableObject {
         if !touchpadEnabled { touchpadStatus="默认关闭 · 两端开启后生效" }
         else if !connected { touchpadStatus="等待连接远端" }
         else if !input.peerSupportsTouchpad { touchpadStatus="远端版本不支持，请更新两端应用。" }
-        else if !input.peerTouchpadEnabled { touchpadStatus="等待远端开启触控板手势映射" }
-        else if !input.peerReceivesTouchpad { touchpadStatus="远端系统暂不支持接收原生手势；仍可向本机转发。" }
-        else { touchpadStatus=touchpadActivity ?? "已就绪 · 等待远端手势触点" }
+        else if !input.peerTouchpadEnabled { touchpadStatus="等待 Windows 开启多指手势转发" }
+        else { touchpadStatus=touchpadActivity ?? "已就绪 · 指针在 Mac 时接收 Windows 三指 / 四指滑动" }
     }
     private func announceDisplay() { let r = input.bounds;guard r.width>1,r.height>1 else{return};var m = Message("display"); m.width = r.width; m.height = r.height; m.features = loginWindow ? ["caps-v1"] : TouchpadAvailability.displayFeatures; server.send(m) }
     private func publishLocalPointer() {

@@ -37,20 +37,20 @@ final class InputEngine {
     var onTouchpadActivity:((String)->Void)?
     var touchpadSessionActive=true { didSet { if !touchpadSessionActive { cancelTouchpad() } } }
     private var suppressTouchpadMomentum=false
-    private var touchpadAllowed:Bool { TouchpadAvailability.forwardingEnabled && !loginWindow && touchpadSessionActive && enabled && touchpadEnabled && peerTouchpadEnabled }
+    private var touchpadAllowed:Bool { TouchpadAvailability.receivesWindowsGestures && !loginWindow && touchpadSessionActive && enabled && touchpadEnabled && peerTouchpadEnabled }
     func sendTouchpadSetting() {
         guard enabled,peerSupportsTouchpad,!loginWindow else{return}
-        var m=Message("touchpadControl");m.down=TouchpadAvailability.forwardingEnabled && touchpadEnabled;send?(m)
+        var m=Message("touchpadControl");m.down=TouchpadAvailability.receivesWindowsGestures && touchpadEnabled && touchpadSessionActive;send?(m)
     }
     private func cancelTouchpad() {
         touchpadCapture.cancel();suppressTouchpadMomentum=false
         touchpadReceiver.reset();touchpadEpoch = touchpadEpoch==Int64.max ? 1:touchpadEpoch+1
     }
     @discardableResult private func postTouchpad(_ gesture:NativeTouchpadGesture)->Bool {
-        guard let event=NativeTouchpad.event(gesture,at:CGEvent(source:nil)?.location ?? lastPoint) else{
+        guard let events=NativeTouchpad.events(gesture,at:CGEvent(source:nil)?.location ?? lastPoint) else{
             onTouchpadActivity?("已收到触点，但无法生成本机手势事件");return false
         }
-        event.post(tap:.cgSessionEventTap)
+        for event in events { event.post(tap:.cgSessionEventTap) }
         if gesture.phase=="begin" {
             let name:String
             switch gesture.kind {

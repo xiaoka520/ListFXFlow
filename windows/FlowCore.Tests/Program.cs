@@ -227,7 +227,16 @@ await TouchpadScrollTests.Run(Check);
     Reject(()=>new Message("touchpad") { Phase="end",Contacts=contacts }.Validate(),"end phase cannot introduce contacts");
     Reject(()=>new Message("touchpadControl").Validate(),"gesture opt-in requires an explicit boolean");
     var migrated=System.Text.Json.JsonSerializer.Deserialize<ConnectionPreferences>("{}");
-    Check(migrated?.TouchpadEnabled==false,"new gesture option is disabled for fresh and migrated settings");
+    Check(migrated?.ForwardMacGestures==false,"new Windows-to-Mac gesture option is disabled for fresh settings");
+    var oldSettings=System.Text.Json.JsonSerializer.Deserialize<ConnectionPreferences>("{\"TouchpadEnabled\":true}");
+    Check(oldSettings?.ForwardMacGestures==false,"an old experimental preference cannot silently turn on Windows-to-Mac gestures");
+    var globalSender=new TouchpadSender();var three=contacts.Append(new TouchpadContact(3,.5,.7)).ToArray();
+    Check(globalSender.Sample(contacts,true,3)==null,"global forwarding does not intercept the ordinary two-finger wheel path");
+    Check(globalSender.Sample(three,true,3)?.Phase=="begin","three-finger SDK contacts begin one gesture stroke");
+    Check(globalSender.Sample(contacts,true,3)?.Phase=="end","lifting to two fingers ends the system gesture without generating a scroll stroke");
+    Check(globalSender.Sample(three,true,3)==null,"adding a third finger again cannot restart a partially lifted stroke");
+    globalSender.Sample([],true,3);
+    Check(globalSender.Sample(three,true,3)?.Phase=="begin" && globalSender.Cancel()?.Phase=="cancel","full lift rearms three-finger capture and settings cancellation releases it");
     Check(System.Runtime.InteropServices.Marshal.SizeOf<NativeTouchpadInjector.Creation>()==40 &&
           System.Runtime.InteropServices.Marshal.SizeOf<NativeTouchpadInjector.PointerInfo>()==96 &&
           System.Runtime.InteropServices.Marshal.SizeOf<NativeTouchpadInjector.TouchInfo>()==144 &&

@@ -1,6 +1,6 @@
 # Mac 虚拟触控板与授权
 
-build 32 已隐藏并停用跨系统手势映射；本页保留为研究记录。当前只启用 Windows 在控制 Mac 时自动屏蔽本机手势，屏蔽不依赖这里的虚拟 HID 权限。
+build 41 新增默认关闭的 [Windows → Mac 多指滑动试验](WINDOWS-MAC-GESTURES.md)，使用 Quartz / Dock 事件，尚未注册虚拟触控板。Windows 本机手势屏蔽保持独立；Mac → Windows 触点转发继续隐藏。本页保留虚拟 HID 路径的研究记录。
 
 build 30 的 Mac 接收后端是 Quartz 手势事件（build 32 已停用），**没有注册真实的虚拟触控板**。接收到触点、成功提交事件、系统实际响应手势是三个不同的结果。窗口切换、桌面切换等系统手势仍需真机验收。
 

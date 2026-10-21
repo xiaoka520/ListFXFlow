@@ -82,6 +82,7 @@
           <StackPanel>
             <TextBlock Text="本机触控板" Foreground="#DBD8FF" FontWeight="SemiBold"/>
             <TextBlock Text="控制 Mac 时自动屏蔽本机多指手势，返回 Windows 后恢复。" TextWrapping="Wrap" Foreground="#858C9F" FontSize="11" Margin="0,9,0,0"/>
+            <CheckBox x:Name="ForwardMacGestures" Content="向 Mac 转发多指手势（实验）" Checked="ForwardMacGesturesChanged" Unchecked="ForwardMacGesturesChanged" Foreground="#929AAF" FontSize="11" Margin="0,12,0,0"/>
             <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
               <TextBlock x:Name="TouchpadStatus" Text="连接后自动启用" TextWrapping="Wrap" Foreground="#929AAF" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0"/>
               <Button Grid.Column="1" Content="重试" Click="RetryTouchpadClick" Background="Transparent" Padding="9,5" ToolTip="重新尝试本机手势屏蔽"/>

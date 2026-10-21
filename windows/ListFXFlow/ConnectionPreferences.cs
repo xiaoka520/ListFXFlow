@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace ListFXFlow;
 
-public sealed record ConnectionPreferences(string MacAddress="",string LocalAddress="",string LastMacAddress="",string AdapterName="",bool TouchpadEnabled=false,bool AutomaticGameProtection=true)
+public sealed record ConnectionPreferences(string MacAddress="",string LocalAddress="",string LastMacAddress="",string AdapterName="",bool TouchpadEnabled=false,bool AutomaticGameProtection=true,bool ForwardMacGestures=false)
 {
     private static string SettingsPath=>Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"ListFXFlow","connection.json");
     public static ConnectionPreferences Load() {

@@ -14,16 +14,16 @@ enum TouchpadEventPayload {
     }
     // macOS 27 validates Dock gestures against a fluid-touch IOHID payload.
     // Layout researched by InstantSpaceSwitcher; see THIRD_PARTY_NOTICES.txt.
-    static func dock(phase:UInt32,motion:UInt16,progress:Double,velocity:Double,timestamp:UInt64)->Data {
+    static func dock(phase:UInt32,motion:UInt16,progress:Double,velocity:Double,timestamp:UInt64,positionX:Double=0,positionY:Double=0)->Data {
         let hasVelocity=velocity != 0 || phase==4
         var bytes=Data()
         bytes.appendLE(timestamp);bytes.appendLE(UInt64(0));bytes.appendLE(UInt32(0));bytes.appendLE(UInt32(0));bytes.appendLE(UInt32(hasVelocity ? 2:1))
         bytes.appendLE(UInt32(40));bytes.appendLE(UInt32(23));bytes.appendLE(phase<<24);bytes.appendLE(UInt32(0))
-        bytes.appendLE(Int32(0));bytes.appendLE(Int32(0));bytes.appendLE(Int32(0));bytes.appendLE(UInt32(0))
+        bytes.appendLE(fixed(positionX));bytes.appendLE(fixed(positionY));bytes.appendLE(Int32(0));bytes.appendLE(UInt32(0))
         bytes.appendLE(motion);bytes.appendLE(UInt16(3));bytes.appendLE(fixed(progress))
         if hasVelocity {
             bytes.appendLE(UInt32(28));bytes.appendLE(UInt32(9));bytes.appendLE(UInt32(0));bytes.appendLE(UInt32(1))
-            bytes.appendLE(fixed(velocity));bytes.appendLE(fixed(velocity));bytes.appendLE(Int32(0))
+            bytes.appendLE(fixed(motion==1 ? velocity:0));bytes.appendLE(fixed(motion==2 ? velocity:0));bytes.appendLE(Int32(0))
         }
         return bytes
     }

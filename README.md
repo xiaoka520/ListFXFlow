@@ -24,13 +24,13 @@
 
 ## 下载与安装
 
-当前为 **Mac 0.2.3 build 38 / Windows 0.2.3 build 40 开发预览版**，尚未发布正式版本，部分功能仍在进行双机测试。使用本文列出的双端构建即可配合使用，截图和图片同步需要两端均为 build 37 或更新版本。
+当前为 **Mac / Windows 0.2.3 build 41 开发预览版**，尚未发布正式版本，部分功能仍在进行双机测试。使用本文列出的双端构建即可配合使用，截图和图片同步需要两端均为 build 37 或更新版本。
 
 预览安装包可在 [GitHub 构建页面](https://github.com/xiaoka520/ListFXFLow/actions/workflows/build.yml)下载：登录 GitHub，打开一次成功的构建，在页面底部的 **Artifacts** 中下载对应系统的压缩包并解压。
 
 ### Mac
 
-1. 打开 `ListFXFlow-Mac-arm64-0.2.3-b38.dmg`。
+1. 打开 `ListFXFlow-Mac-arm64-0.2.3-b41.dmg`。
 2. 把 **ListFXFlow.app** 拖到「应用程序」，再从「应用程序」打开。
 3. 按应用内的权限向导，分别打开系统的**辅助功能**和**输入监控**设置。
 4. 将向导旁小窗口中的应用图标拖入权限列表，打开对应开关。请授权向导中显示的当前应用路径。
@@ -38,11 +38,11 @@
 
 ### Windows
 
-1. 运行 `ListFXFlow-Setup-x64-0.2.3-b40.exe`，按向导安装。
+1. 运行 `ListFXFlow-Setup-x64-0.2.3-b41.exe`，按向导安装。
 2. 安装到当前用户即可，无需另装 .NET；普通安装不需要管理员权限。
 3. 安装完成后启动 ListFXFlow。
 
-也可以解压 `ListFXFlow-Windows-x64-0.2.3-b40.zip`，直接运行其中的 `ListFXFlow.exe`，使用免安装版。
+也可以解压 `ListFXFlow-Windows-x64-0.2.3-b41.zip`，直接运行其中的 `ListFXFlow.exe`，使用免安装版。
 
 预览包尚未完成正式发行签名；Mac 未公证，Windows 可能显示 SmartScreen 提示。请确认安装包来源后再按系统提示操作。
 
@@ -62,7 +62,7 @@
 
 键盘输入发送到鼠标当前所在的电脑，输入法由那台电脑处理。按键按物理位置对应：**Win 对应 Command，Alt 对应 Option，Ctrl 对应 Control**。例如，在 Mac 上粘贴用 Command+V，在 Windows 上粘贴用 Ctrl+V。
 
-按住鼠标按钮或键盘按键时，暂不自动跨屏，松开后再移动即可。Windows 触控板双指滚动可转发到 Mac；控制 Mac 时，三指及以上 Windows 本机手势继续屏蔽。Fn、媒体键和厂商专用键暂不支持；跨系统多指手势映射暂未提供。中文输入法混输和不同触控板的兼容性仍需实际设备验证。
+按住鼠标按钮或键盘按键时，暂不自动跨屏，松开后再移动即可。Windows 触控板双指滚动可转发到 Mac；控制 Mac 时，三指及以上 Windows 本机手势继续屏蔽。Fn、媒体键和厂商专用键暂不支持；Windows → Mac 三指 / 四指滑动现提供默认关闭的试验开关；在 Windows 勾选“向 Mac 转发多指手势（实验）”，Mac 开启“接收 Windows 多指手势（实验）”后尝试。捏合、旋转、多指轻点及 Mac → Windows 多指转发仍未开放，详见[试验说明](docs/WINDOWS-MAC-GESTURES.md)。中文输入法混输和不同触控板的兼容性仍需实际设备验证。
 
 ### 复制与粘贴
 

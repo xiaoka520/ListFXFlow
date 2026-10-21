@@ -18,7 +18,7 @@ internal sealed class TouchpadWorkerHost : IDisposable {
     private TouchpadCaptureSession? capture;
     private long epoch;
     private int scheduled,errorSent;
-    private bool remote,suppressOnly;
+    private bool remote,suppressOnly,forwardGestures;
     private readonly TouchpadActivationRetry activation=new();
     private readonly TouchpadFeedbackCounter feedback=new("synthetic-touchpad");
     private TouchpadWorkerHost(Dispatcher dispatcher) {
@@ -73,7 +73,7 @@ internal sealed class TouchpadWorkerHost : IDisposable {
         }));
     }
     private void ReportReadError(string message) {
-        if(suppressOnly)return;
+        if(suppressOnly && !forwardGestures)return;
         TouchpadDiagnostics.Write("worker",message);
         if(sender.Cancel() is {} cancel)Emit(new("input",epoch,Input:cancel));
         Emit(new("captureWarning",epoch,Owned:capture?.Armed==true,Status:message[..Math.Min(message.Length,1024)]));
@@ -98,19 +98,21 @@ internal sealed class TouchpadWorkerHost : IDisposable {
         }
     }
     private void Configure(TouchpadWorkerPacket packet) {
-        TouchpadDiagnostics.Write("worker",$"configure remote={packet.Remote}; suppressOnly={packet.SuppressOnly}");
+        TouchpadDiagnostics.Write("worker",$"configure remote={packet.Remote}; suppressOnly={packet.SuppressOnly}; forwardGestures={packet.ForwardGestures}");
         if(sender.Cancel() is {} cancel)Emit(new("input",epoch,Input:cancel));
         sender=new();
-        if(suppressOnly!=packet.SuppressOnly) { capture?.Dispose();capture=null; }
-        suppressOnly=packet.SuppressOnly;
+        if(suppressOnly!=packet.SuppressOnly || forwardGestures!=packet.ForwardGestures) { capture?.Dispose();capture=null; }
+        suppressOnly=packet.SuppressOnly;forwardGestures=packet.ForwardGestures;
         activation.Stop();epoch=packet.Epoch;injector?.Reset();remote=packet.Remote;
         if(remote) {
             Emit(new("state",epoch,Status:suppressOnly ? "正在屏蔽本机多指手势…":"正在准备 SDK 触控板捕获…"));
             capture??=new TouchpadCaptureSession(dispatcher,contacts=> {
-                if(!suppressOnly && sender.Sample(contacts,remote && capture?.Armed==true) is {} input)Emit(new("input",epoch,Input:input));
+                if((!suppressOnly || forwardGestures) && sender.Sample(contacts,remote && capture?.Armed==true,minimumContacts:suppressOnly ? 3:2) is {} input) {
+                    input.GestureEpoch=epoch;Emit(new("input",epoch,Input:input));
+                }
             },ReportReadError,status=>Emit(new("state",epoch,Owned:capture?.Armed==true,Status:status)),suppressOnly,scroll=> {
                 if(suppressOnly && remote && capture?.Armed==true)Emit(new("scroll",epoch,Input:scroll));
-            });
+            },forwardGestures);
             capture.PrepareAcquire();
             activation.Begin(epoch,Environment.TickCount64);RequestForeground();
         } else {
@@ -121,7 +123,7 @@ internal sealed class TouchpadWorkerHost : IDisposable {
     }
     private void CaptureReady() {
         activation.Stop();
-        Emit(new("state",epoch,Owned:true,Status:suppressOnly ? "本机多指手势已屏蔽":"SDK 拦截已启用 · 尚未收到真实触点"));
+        Emit(new("state",epoch,Owned:true,Status:suppressOnly && !forwardGestures ? "本机多指手势已屏蔽":"本机多指手势已屏蔽 · 等待多指触点"));
     }
     private void RequestForeground() {
         if(!activation.Request(Environment.TickCount64))return;

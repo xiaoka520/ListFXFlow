@@ -39,6 +39,8 @@ public partial class MainWindow : Window
         input.OnGameProtection=(locked,status,canToggle)=>PostUi(()=> { gameLocked=locked;canToggleGame=canToggle;GameStatus.Text=status;GameLockButton.Content=locked ? "解除锁定":"锁定 Windows";GameLockButton.IsEnabled=canToggle;tray?.UpdateGameProtection(locked,canToggle); });
         AutomaticGameProtection.IsChecked=preferences.AutomaticGameProtection;
         input.SetAutomaticGameProtection(preferences.AutomaticGameProtection);
+        ForwardMacGestures.IsChecked=preferences.ForwardMacGestures;
+        input.SetGestureForwarding(preferences.ForwardMacGestures);
         SourceInitialized+=(_,_)=> { int dark=1; Native.DwmSetWindowAttribute(new System.Windows.Interop.WindowInteropHelper(this).Handle,20,ref dark,sizeof(int)); };
         layout.WindowsAspect=input.Width/input.Height; input.ApplyTopology(layout);
         input.Send=m => client?.Send(m);
@@ -107,6 +109,11 @@ public partial class MainWindow : Window
         await Task.Run(()=>current.Connect(adapter,macAddress,preferences.LastMacAddress));
         if(client==current) { client=null; connected=false; input.Stop(); tray?.Update(StatusText.Text,false); ConnectButton.Content="连接 Mac"; ConnectionBadge.Text="未连接"; ConnectionDot.Fill=Brushes.Transparent; Adapters.IsEnabled=true; MacAddress.IsEnabled=true; }
         if(autoReconnect && !quitting) ScheduleReconnect();
+    }
+    private void ForwardMacGesturesChanged(object sender,RoutedEventArgs e) {
+        if(!IsLoaded)return;
+        preferences=preferences with { ForwardMacGestures=ForwardMacGestures.IsChecked==true };preferences.Save();
+        input.SetGestureForwarding(preferences.ForwardMacGestures);
     }
     private void RetryTouchpadClick(object sender,RoutedEventArgs e)=>input.RetryTouchpadSuppression();
     private void GameLockClick(object sender,RoutedEventArgs e)=>input.ToggleGameProtection();

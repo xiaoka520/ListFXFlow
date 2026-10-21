@@ -22,7 +22,7 @@ internal sealed class TouchpadWorkerClient : IDisposable {
     private readonly Func<int,bool> allowForeground;
     private Session? session;
     private long epoch;
-    private bool active,remote,failed,disposed,suppressOnly;
+    private bool active,remote,failed,disposed,suppressOnly,forwardGestures;
     internal bool Owned {get;private set;}
     internal int ProcessId { get { lock(gate)return session?.ProcessId ?? 0; } }
     internal long Epoch { get { lock(gate)return epoch; } }
@@ -52,13 +52,13 @@ internal sealed class TouchpadWorkerClient : IDisposable {
         }
         if(!queued)Fail(current,new IOException("Touchpad foreground command queue overflow"));
     }
-    internal void Configure(bool enabled,bool remoteCapture,bool suppressOnly=false) {
+    internal void Configure(bool enabled,bool remoteCapture,bool suppressOnly=false,bool forwardGestures=false) {
         lock(gate) {
-            if(disposed || active==enabled && remote==remoteCapture && this.suppressOnly==suppressOnly && (session!=null || !enabled || failed))return;
-            active=enabled;remote=remoteCapture;this.suppressOnly=suppressOnly;Owned=false;epoch++;events.Replace();
+            if(disposed || active==enabled && remote==remoteCapture && this.suppressOnly==suppressOnly && this.forwardGestures==forwardGestures && (session!=null || !enabled || failed))return;
+            active=enabled;remote=remoteCapture;this.suppressOnly=suppressOnly;this.forwardGestures=forwardGestures;Owned=false;epoch++;events.Replace();
             if(!enabled) { session?.Stop.Cancel();return; }
             if(failed)return;
-            var command=new TouchpadWorkerPacket("configure",epoch,remoteCapture,SuppressOnly:suppressOnly);
+            var command=new TouchpadWorkerPacket("configure",epoch,remoteCapture,SuppressOnly:suppressOnly,ForwardGestures:forwardGestures);
             if(session==null) {
                 var current=new Session(epoch);current.Outgoing.Replace(command);session=current;
                 Completion=Task.Run(()=>Run(current));

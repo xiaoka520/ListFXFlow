@@ -1,5 +1,6 @@
 import XCTest
 import FlowCore
+import CoreGraphics
 @testable import FlowMac
 
 final class TouchpadFeedbackTests:XCTestCase {
@@ -25,6 +26,27 @@ final class TouchpadFeedbackTests:XCTestCase {
         XCTAssertEqual(end.frames,3);XCTAssertEqual(submitted.last?.phase,"end")
         receiver.reset()
         XCTAssertNil(receiver.receive(frame("change",3,0.05),at:2))
+    }
+    func testWindowsThreeFingerStrokeProducesNativeDockSequenceAndCancelsOnReset() throws {
+        var submitted=[CGEvent]()
+        let receiver=MacGestureReceiver { gesture in
+            guard let events=NativeTouchpad.events(gesture,at:.zero,augmentDock:true) else{return false}
+            submitted.append(contentsOf:events);return true
+        }
+        var m=Message("touchpad");m.phase="begin";m.gestureEpoch=41
+        m.contacts=[.init(id:0,x:0.2,y:0.5),.init(id:1,x:0.5,y:0.5),.init(id:2,x:0.8,y:0.5)]
+        _=receiver.receive(m,at:1)
+        XCTAssertTrue(submitted.isEmpty)
+        m.phase="change";m.contacts=m.contacts!.map{.init(id:$0.id,x:$0.x-0.1,y:$0.y)}
+        let feedback=try XCTUnwrap(receiver.receive(m,at:1.3))
+        XCTAssertEqual(feedback.phase,"submitted");XCTAssertEqual(feedback.events,2)
+        XCTAssertEqual(submitted.map{$0.type.rawValue},[30,29,30,29])
+        XCTAssertEqual(submitted[2].getDoubleValueField(CGEventField(rawValue:124)!),-0.1,accuracy:0.0001)
+        receiver.reset()
+        XCTAssertEqual(submitted.count,6)
+        XCTAssertEqual(submitted[4].getIntegerValueField(CGEventField(rawValue:132)!),8)
+        XCTAssertNil(receiver.receive(m,at:1.4))
+        XCTAssertEqual(submitted.count,6)
     }
     func testFailedNativeSubmissionIsNotAcknowledgedAsSuccess() throws {
         let receiver=MacGestureReceiver { _ in false }

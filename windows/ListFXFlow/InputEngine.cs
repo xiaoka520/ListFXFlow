@@ -22,7 +22,20 @@ public sealed class InputEngine : IDisposable
     private readonly ScrollDiagnostics scrollDiagnostics=new("scroll-main");
     private int touchpadDrainScheduled;
     private string? touchpadCaptureError,touchpadWorkerStatus;
-    public string[] Features=>["clipboard-v1","caps-v1","game-mode-v1"];
+    public string[] Features=>["clipboard-v1","caps-v1","game-mode-v1","touchpad-v1","touchpad-feedback-v1"];
+    private bool forwardMacGestures,peerGestureReceiver,peerGestures;
+    private long? gestureStrokeEpoch;
+    public void SetGestureForwarding(bool value) { if(!disposed)dispatcher.Invoke(()=> {
+        CancelGestureStroke();forwardMacGestures=value;AnnounceGestureSetting();RefreshTouchpadOwnership();UpdateTouchpadStatus();
+    }); }
+    private bool ForwardGestures=>forwardMacGestures && peerGestureReceiver && peerGestures;
+    private void AnnounceGestureSetting() {
+        if(enabled && peerGestureReceiver)Send?.Invoke(new("touchpadControl") { Down=forwardMacGestures });
+    }
+    private void CancelGestureStroke() {
+        if(gestureStrokeEpoch is {} epoch)Send?.Invoke(new("touchpad") {Phase="cancel",Contacts=[],GestureEpoch=epoch});
+        gestureStrokeEpoch=null;
+    }
     private readonly GameProtection gameProtection=new();
     private readonly GameShortcut gameShortcut=new();
     private DispatcherTimer gameTimer=null!;
@@ -67,19 +80,21 @@ public sealed class InputEngine : IDisposable
     private double relativeRemainderX,relativeRemainderY;
     public void RetryTouchpadSuppression() {
         if(!disposed)dispatcher.Invoke(()=> {
-            touchpadWorker.Configure(false,false,true);touchpadWorker.Retry();
+            CancelGestureStroke();touchpadWorker.Configure(false,false,true);touchpadWorker.Retry();
             touchpadCaptureError=null;touchpadWorkerStatus=null;
             RefreshTouchpadOwnership();UpdateTouchpadStatus();
         });
     }
     private void RefreshTouchpadOwnership() {
         bool wanted=TouchpadSuppressionPolicy.Wanted(enabled,Router.Active);
-        touchpadWorker.Configure(enabled,wanted,suppressOnly:true);
+        if(!wanted || !ForwardGestures)CancelGestureStroke();
+        touchpadWorker.Configure(enabled,wanted,suppressOnly:true,forwardGestures:ForwardGestures);
         scrollDiagnostics.Context=$"active={Router.Active} sharing={enabled} owned={touchpadWorker.Owned}";
     }
     private void UpdateTouchpadStatus()=>OnTouchpadStatus?.Invoke(!enabled ? "共享已停止 · 本机手势正常" :
         Router.Active=="windows" ? "本机手势正常 · 控制 Mac 时自动屏蔽" :
-        touchpadCaptureError ?? touchpadWorkerStatus ?? "正在准备屏蔽本机多指手势…");
+        touchpadCaptureError ?? (forwardMacGestures && !peerGestureReceiver ? "Mac 版本不支持手势接收，请更新 Mac" :
+        forwardMacGestures && !peerGestures ? "本机多指手势已屏蔽 · 等待 Mac 开启接收" :touchpadWorkerStatus ?? "正在准备屏蔽本机多指手势…"));
     private void ScheduleTouchpadDrain() {
         if(!disposed && Interlocked.Exchange(ref touchpadDrainScheduled,1)==0)dispatcher.BeginInvoke(DispatcherPriority.Input,new Action(DrainTouchpad));
     }
@@ -89,7 +104,7 @@ public sealed class InputEngine : IDisposable
             if(packet!.Kind=="foregroundRequest") {
                 if(TouchpadSuppressionPolicy.Wanted(enabled,Router.Active))touchpadWorker.GrantForeground(packet.Epoch);
             } else if(packet.Kind is "error" or "captureWarning") {
-                touchpadCaptureError=packet.Status;UpdateTouchpadStatus();
+                CancelGestureStroke();touchpadCaptureError=packet.Status;UpdateTouchpadStatus();
             } else if(packet.Kind=="state") {
                 touchpadCaptureError=null;touchpadWorkerStatus=packet.Status;UpdateTouchpadStatus();
             } else if(packet.Kind=="scroll" && packet.Input is {} scroll && TouchpadScroll.CanForward(enabled,Router.Active,touchpadWorker.Owned,scroll,physicalKeys.Contains(224) || physicalKeys.Contains(228))) {
@@ -98,8 +113,13 @@ public sealed class InputEngine : IDisposable
             } else if(packet.Kind=="scroll") {
                 scrollDiagnostics.Count(ScrollStage.WorkerReceived);scrollDiagnostics.Count(ScrollStage.WorkerDropped);
             }
-            // Gesture mapping is hidden. Contacts and injection receipts never cross
-            // the network even if an older worker unexpectedly produces them.
+            else if(packet.Kind=="input" && packet.Input is {} gesture && enabled && Router.Active=="mac" && ForwardGestures) {
+                if(gesture.Phase=="begin") { CancelGestureStroke();gestureStrokeEpoch=packet.Epoch; }
+                if(gestureStrokeEpoch==packet.Epoch) {
+                    FlushOutgoing();gesture.GestureEpoch=packet.Epoch;Send?.Invoke(gesture);
+                    if(gesture.Phase is "end" or "cancel")gestureStrokeEpoch=null;
+                }
+            }
         }
         if(touchpadWorker.HasPending)ScheduleTouchpadDrain();
         scrollDiagnostics.Context=$"active={Router.Active} sharing={enabled} owned={touchpadWorker.Owned}";
@@ -127,6 +147,7 @@ public sealed class InputEngine : IDisposable
     public double Height=>Native.GetSystemMetrics(1);
     public bool Enabled { set { if(!disposed) dispatcher.Invoke(()=>SetEnabled(value)); } }
     private void SetEnabled(bool value) {
+        if(!value)CancelGestureStroke();
         enabled=value;
         if(value) { touchpadWorker.Retry();touchpadCaptureError=null;touchpadWorkerStatus=null; }
         RefreshTouchpadOwnership();
@@ -332,6 +353,8 @@ public sealed class InputEngine : IDisposable
         if(m.Type is "key" or "button") FinishWheel();
         switch(m.Type) {
             case "display":
+                peerGestureReceiver=m.Features?.Contains("touchpad-quartz-receive-v1")==true;
+                AnnounceGestureSetting();RefreshTouchpadOwnership();UpdateTouchpadStatus();
                 peerGameMode=m.Features?.Contains("game-mode-v1")==true;ApplyGameProtection(force:true);
                 capsSync=m.Features?.Contains("caps-v1")==true; Router.Topology.MacAspect=m.Width!.Value/m.Height!.Value; PublishLayout(); break;
             case "gameModeRequest" when peerGameMode: SetManualGameProtection(m.Down!.Value);break;
@@ -362,6 +385,12 @@ public sealed class InputEngine : IDisposable
                 FlushPointer();
                 wheel.Add(-m.Dx!.Value,m.Dy!.Value); StepWheel();
                 break;
+            case "touchpadControl":
+                peerGestures=peerGestureReceiver && m.Down==true;
+                RefreshTouchpadOwnership();UpdateTouchpadStatus();break;
+            case "touchpadFeedback" when ForwardGestures && Router.Active=="mac" && m.GestureEpoch==touchpadWorker.Epoch:
+                touchpadWorkerStatus=m.Phase=="unavailable" ? "Mac 无法生成系统手势事件" :$"Mac 已收 {m.Frames} 帧 / 已提交 {m.Events} 个事件（不代表系统已执行）";
+                UpdateTouchpadStatus();break;
             case "caps": SetCaps(m.Down!.Value); break;
             case "reset": SetEnabled(false); OnControl?.Invoke(m); break;
         }
@@ -490,7 +519,7 @@ public sealed class InputEngine : IDisposable
         foreach(int button in injectedButtons) ButtonEvent(button,false);
         injectedKeys.Clear(); injectedButtons.Clear();
     }
-    private void Reset() { gameProtection.Reset();gameShortcut.Reset();peerGameMode=false;ownershipReady=false;gamePhase="off";relativeRemainderX=relativeRemainderY=0;touchpadCaptureError=null;touchpadWorkerStatus=null;touchpadWorker.Configure(false,false,true);injector.CancelPending(); ReleaseInjected(); CancelFrame(); Router.Reset("windows");ApplyGameProtection(force:true); hasLocalPointer=false; shield?.Hide(); physicalKeys.Clear(); physicalButtons.Clear(); OnFocus?.Invoke("windows"); }
+    private void Reset() { CancelGestureStroke();peerGestureReceiver=false;peerGestures=false;gameProtection.Reset();gameShortcut.Reset();peerGameMode=false;ownershipReady=false;gamePhase="off";relativeRemainderX=relativeRemainderY=0;touchpadCaptureError=null;touchpadWorkerStatus=null;touchpadWorker.Configure(false,false,true);injector.CancelPending(); ReleaseInjected(); CancelFrame(); Router.Reset("windows");ApplyGameProtection(force:true); hasLocalPointer=false; shield?.Hide(); physicalKeys.Clear(); physicalButtons.Clear(); OnFocus?.Invoke("windows"); }
     private void StopCore() {
         SetEnabled(false);
         if(mouseHook!=IntPtr.Zero) Native.UnhookWindowsHookEx(mouseHook);

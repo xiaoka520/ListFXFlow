@@ -22,6 +22,14 @@ internal static class TouchpadWorkerTests {
             if(packet.Kind=="stop")return;
             if(packet.Kind=="configure") {
                 epoch=packet.Epoch;remote=packet.Remote;
+                if(mode=="global-forward") {
+                    if(!packet.SuppressOnly)throw new Exception("Global forwarding must preserve system two-finger recognition");
+                    await TouchpadWorkerWire.Write(pipe,new("state",epoch,Owned:remote,Status:packet.ForwardGestures ? "forwarding":"suppressed"),CancellationToken.None);
+                    if(packet.ForwardGestures && remote) {
+                        await TouchpadWorkerWire.Write(pipe,new("input",epoch,Input:new("touchpad") {Phase="begin",GestureEpoch=epoch,Contacts=contacts.Append(new TouchpadContact(3,.5,.7)).ToArray()}),CancellationToken.None);
+                    } else await TouchpadWorkerWire.Write(pipe,new("input",epoch-1,Input:new("touchpad") {Phase="change",Contacts=contacts}),CancellationToken.None);
+                    continue;
+                }
                 if(mode=="suppression") {
                     if(!packet.SuppressOnly)throw new Exception("Suppression mode was lost over IPC");
                     await TouchpadWorkerWire.Write(pipe,new("state",epoch,Owned:remote,Status:remote ? "suppressed":"local"),CancellationToken.None);
@@ -94,6 +102,18 @@ internal static class TouchpadWorkerTests {
             await Task.Delay(100);
             bool injected=false,staleScroll=false;while(client.TryTake(out var p)) { injected|=p!.Status=="fake-injected";staleScroll|=p.Kind=="scroll"; }
             check(!client.Owned && !injected && !staleScroll,"suppression mode releases local ownership and rejects obsolete gesture injection and stale scroll");
+            client.Configure(false,false,suppressOnly:true);await client.Completion.WaitAsync(TimeSpan.FromSeconds(4));
+        }
+        using(var client=new TouchpadWorkerClient(()=>{},pipe=>Launch(pipe,"global-forward"),1500)) {
+            client.Configure(true,true,suppressOnly:true,forwardGestures:true);
+            var received=new List<TouchpadWorkerPacket>();
+            await Wait(()=> {while(client.TryTake(out var p))received.Add(p!);return received.Any(p=>p.Input?.Phase=="begin");});
+            check(client.Owned && received.Any(p=>p.Input?.Contacts?.Length==3),"global-contact forwarding opt-in crosses real IPC while retaining suppression-only two-finger mode");
+            long firstEpoch=client.Epoch;
+            client.Configure(true,true,suppressOnly:true,forwardGestures:false);
+            received.Clear();
+            await Wait(()=> {while(client.TryTake(out var p))received.Add(p!);return received.Any(p=>p.Status=="suppressed");});
+            check(client.Epoch>firstEpoch && client.Owned && received.All(p=>p.Input==null),"disabling forwarding changes epoch and rejects stale contacts without releasing local gesture suppression");
             client.Configure(false,false,suppressOnly:true);await client.Completion.WaitAsync(TimeSpan.FromSeconds(4));
         }
         int grants=0,grantedPid=0,workerPid=0;

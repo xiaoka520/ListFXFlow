@@ -72,7 +72,7 @@ final class TouchpadTests:XCTestCase {
         XCTAssertEqual(pan.type,.scrollWheel)
         XCTAssertEqual(NSEvent(cgEvent:pan)?.phase,.ended)
         XCTAssertEqual(pan.getIntegerValueField(.scrollWheelEventScrollPhase),4)
-        let dock=try XCTUnwrap(NativeTouchpad.event(.init(kind:.dockHorizontal,phase:"change",value:0.25),at:point))
+        let dock=try XCTUnwrap(NativeTouchpad.event(.init(kind:.dockHorizontal,phase:"change",value:0.25),at:point,augmentDock:false))
         XCTAssertEqual(dock.getIntegerValueField(CGEventField(rawValue:55)!),30)
         XCTAssertEqual(dock.getIntegerValueField(CGEventField(rawValue:110)!),23)
         XCTAssertEqual(dock.getDoubleValueField(CGEventField(rawValue:124)!),0.25,accuracy:0.0001)
@@ -92,6 +92,23 @@ final class TouchpadTests:XCTestCase {
         XCTAssertEqual(event.getIntegerValueField(.eventSourceUserData),InputEngine.marker)
         XCTAssertEqual(NSEvent(cgEvent:event)?.phase,.began)
     }
+    func testModernDockSequenceUsesReversedDirectionAxisAndCompanion() throws {
+        let modern=try XCTUnwrap(NativeTouchpad.events(.init(kind:.dockHorizontal,phase:"end",value:0.3,velocity:60),at:.zero,augmentDock:true))
+        XCTAssertEqual(modern.count,2)
+        let event=modern[0]
+        XCTAssertEqual(event.getDoubleValueField(CGEventField(rawValue:124)!),-0.3,accuracy:0.0001)
+        XCTAssertEqual(event.getDoubleValueField(CGEventField(rawValue:129)!),-60)
+        XCTAssertEqual(event.getDoubleValueField(CGEventField(rawValue:130)!),0)
+        XCTAssertEqual(event.getDoubleValueField(CGEventField(rawValue:125)!),0.1,accuracy:0.0001)
+        XCTAssertEqual(modern[1].type.rawValue,29)
+        XCTAssertTrue(modern.allSatisfy{$0.getIntegerValueField(.eventSourceUserData)==InputEngine.marker})
+        let legacy=try XCTUnwrap(NativeTouchpad.events(.init(kind:.dockHorizontal,phase:"change",value:0.3,velocity:60),at:.zero,augmentDock:false))
+        XCTAssertEqual(legacy.count,1)
+        XCTAssertEqual(legacy[0].getDoubleValueField(CGEventField(rawValue:124)!),0.3,accuracy:0.0001)
+        let vertical=try XCTUnwrap(NativeTouchpad.events(.init(kind:.dockVertical,phase:"end",value:0.3,velocity:60),at:.zero,augmentDock:true))
+        XCTAssertEqual(vertical[0].getDoubleValueField(CGEventField(rawValue:129)!),0)
+        XCTAssertEqual(vertical[0].getDoubleValueField(CGEventField(rawValue:130)!),60)
+    }
     func testDockPayloadPhasesProgressAndFlickRelease() throws {
         let bytes=TouchpadEventPayload.dock(phase:4,motion:2,progress:-0.25,velocity:-50,timestamp:123)
         func u32(_ offset:Int)->UInt32 { bytes[offset..<offset+4].enumerated().reduce(0){$0 | UInt32($1.element)<<($1.offset*8)} }
@@ -103,7 +120,7 @@ final class TouchpadTests:XCTestCase {
         let dock=try XCTUnwrap(NativeTouchpad.event(.init(kind:.dockHorizontal,phase:"change",value:-0.25),at:.zero,augmentDock:true))
         XCTAssertEqual(dock.getIntegerValueField(CGEventField(rawValue:134)!),2)
         XCTAssertEqual(dock.getDoubleValueField(CGEventField(rawValue:138)!),3)
-        XCTAssertEqual(UInt32(truncatingIfNeeded:dock.getIntegerValueField(CGEventField(rawValue:135)!)),Float(-0.25).bitPattern)
+        XCTAssertEqual(UInt32(truncatingIfNeeded:dock.getIntegerValueField(CGEventField(rawValue:135)!)),Float(0.25).bitPattern)
         XCTAssertEqual(dock.getIntegerValueField(.eventSourceUserData),InputEngine.marker)
         var r=TouchpadRecognizer()
         let three=pair+[TouchpadContact(id:3,x:0.5,y:0.7)]

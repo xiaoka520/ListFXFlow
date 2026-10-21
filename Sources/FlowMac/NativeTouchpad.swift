@@ -28,9 +28,14 @@ enum NativeTouchpad {
             case .rotate: integer(110,5);number(114,g.value)
             case .dockHorizontal,.dockVertical:
                 integer(55,30);integer(110,23);integer(123,g.kind == .dockHorizontal ? 1:2)
-                number(124,g.value);number(129,g.velocity);number(130,g.velocity)
-                integer(134,phase);number(138,3);number(169,Double(mach_absolute_time()))
-                integer(135,Int64(Int32(bitPattern:Float(g.value).bitPattern)))
+                // macOS 27 reverses horizontal Dock direction, requires the
+                // matching IOHID payload, and expects a generic gesture companion.
+                let horizontal=g.kind == .dockHorizontal
+                let progress=augmentDock && horizontal ? -g.value:g.value
+                let velocity=augmentDock ? (phase==4 ? (horizontal ? -g.velocity:g.velocity):0):g.velocity
+                number(124,progress);number(129,horizontal ? velocity:0);number(130,horizontal && !augmentDock ? velocity:horizontal ? 0:velocity)
+                integer(134,phase);number(138,3);number(125,augmentDock ? 0.1:0)
+                integer(135,Int64(Int32(bitPattern:Float(progress).bitPattern)))
             case .pan: break
             }
         }
@@ -40,13 +45,27 @@ enum NativeTouchpad {
             guard let payload=TouchpadEventPayload.digitizer(timestamp:base.timestamp) else{return nil}
             event=TouchpadEventPayload.attach(payload,to:base)
         } else if let base=event,augmentDock,g.kind == .dockHorizontal || g.kind == .dockVertical {
-            event=TouchpadEventPayload.attach(TouchpadEventPayload.dock(phase:UInt32(phase),motion:g.kind == .dockHorizontal ? 1:2,progress:g.value,velocity:g.velocity,timestamp:base.timestamp),to:base)
+            event=TouchpadEventPayload.attach(TouchpadEventPayload.dock(phase:UInt32(phase),motion:g.kind == .dockHorizontal ? 1:2,
+                progress:base.getDoubleValueField(CGEventField(rawValue:124)!),
+                velocity:base.getDoubleValueField(CGEventField(rawValue:g.kind == .dockHorizontal ? 129:130)!),timestamp:base.timestamp,positionX:0.1),to:base)
         }
         // CGEvent reconstruction drops source user-data. Restore it afterwards
         // so our capture tap never forwards the injected gesture back again.
         event?.location=point
         event?.setIntegerValueField(.eventSourceUserData,value:InputEngine.marker)
         return event
+    }
+    /// Construct the complete native sequence; construction never posts input.
+    static func events(_ g:NativeTouchpadGesture,at point:CGPoint,augmentDock:Bool=ProcessInfo.processInfo.operatingSystemVersion.majorVersion>=27)->[CGEvent]? {
+        guard let event=event(g,at:point,augmentDock:augmentDock) else{return nil}
+        if augmentDock && (g.kind == .dockHorizontal || g.kind == .dockVertical) {
+            guard let companion=CGEvent(source:source) else{return nil}
+            companion.setIntegerValueField(CGEventField(rawValue:55)!,value:29)
+            companion.location=point;companion.timestamp=event.timestamp
+            companion.setIntegerValueField(.eventSourceUserData,value:InputEngine.marker)
+            return [event,companion]
+        }
+        return [event]
     }
 }
 

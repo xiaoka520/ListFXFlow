@@ -157,6 +157,11 @@ struct WorkspaceView: View {
                         Button(model.gameProtection ? "解除锁定":"锁定 Windows") { model.toggleGameProtection() }
                             .disabled(!model.connected || !model.gameProtectionAvailable || model.active != "windows")
                     }.padding(16).background(surface,in:RoundedRectangle(cornerRadius:14))
+                    VStack(alignment:.leading,spacing:8) {
+                        Toggle("接收 Windows 多指手势（实验）",isOn:$model.touchpadEnabled).font(.system(size:13,weight:.semibold)).tint(accent)
+                        Text(model.touchpadStatus).font(.system(size:11)).foregroundStyle(.secondary)
+                        Text("三指 / 四指滑动提交给 Mac 系统手势处理；双指滚动独立工作。").font(.system(size:11)).foregroundStyle(.secondary)
+                    }.padding(16).background(surface,in:RoundedRectangle(cornerRadius:14))
                     VStack(alignment: .leading, spacing: 16) {
                         HStack {
                             VStack(alignment: .leading, spacing: 6) {

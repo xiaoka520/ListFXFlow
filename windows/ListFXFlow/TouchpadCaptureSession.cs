@@ -19,7 +19,7 @@ internal sealed class TouchpadCaptureSession : IDisposable {
     private readonly Action<TouchpadContact[]> contacts;
     private readonly Action<string> warning;
     private readonly Action<string> activity;
-    private readonly bool suppressOnly;
+    private readonly bool suppressOnly,forwardGestures;
     private readonly ScrollDiagnostics scrollDiagnostics=new("scroll-worker");
     private bool active,disposed,flushQueued;
     private long generation;
@@ -29,9 +29,9 @@ internal sealed class TouchpadCaptureSession : IDisposable {
     internal bool Armed=>active && window.Foreground && controller.Enabled && (controller.SupportedGestures&All)==All;
     internal bool Active=>active;
     internal string ForegroundDescription=>window.ForegroundDescription;
-    internal TouchpadCaptureSession(Dispatcher dispatcher,Action<TouchpadContact[]> contacts,Action<string> warning,Action<string> activity,bool suppressOnly=false,Action<Message>? scroll=null) {
+    internal TouchpadCaptureSession(Dispatcher dispatcher,Action<TouchpadContact[]> contacts,Action<string> warning,Action<string> activity,bool suppressOnly=false,Action<Message>? scroll=null,bool forwardGestures=false) {
         this.dispatcher=dispatcher;this.contacts=contacts;this.warning=warning;this.activity=activity;
-        this.suppressOnly=suppressOnly;
+        this.suppressOnly=suppressOnly;this.forwardGestures=forwardGestures;
         TouchpadDiagnostics.Write("worker","SDK capture: checking API availability");
         if(!ApiInformation.IsTypePresent("Windows.UI.Input.TouchpadGesturesController") || !TouchpadGesturesController.IsSupported())throw new NotSupportedException("此 Windows 未提供原生触控板接管 API。");
         controller=TouchpadGesturesController.CreateForProcess();
@@ -74,7 +74,10 @@ internal sealed class TouchpadCaptureSession : IDisposable {
     private bool CanRead()=>active && !disposed && window.Foreground;
     private void OnPoint(TouchpadGesturesController sender,PointerEventArgs args) {
         scrollDiagnostics.Count(ScrollStage.GlobalPointer);
-        if(suppressOnly) { args.Handled=true;return; } // No contact reads or forwarding.
+        // Read only SDK-owned global contacts; do not register the window for
+        // two-finger pointers or steal the native wheel/pinch recognition path.
+        args.Handled=true;
+        if(suppressOnly && !forwardGestures)return;
         if(!CanRead())return;
         try {
             var point=args.CurrentPoint;var p=point.Properties;

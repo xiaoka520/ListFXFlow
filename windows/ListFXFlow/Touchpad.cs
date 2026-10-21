@@ -13,12 +13,12 @@ internal sealed class TouchpadSender {
         if(!Active)return null;Active=false;
         return new("touchpad") { Phase="cancel",Contacts=[] };
     }
-    internal Message? Sample(TouchpadContact[] contacts,bool allowed) {
+    internal Message? Sample(TouchpadContact[] contacts,bool allowed,int minimumContacts=2) {
         hasContacts=contacts.Length!=0;
         if(contacts.Length>5 || contacts.Any(c=>!c.Valid) || contacts.Select(c=>c.Id).Distinct().Count()!=contacts.Length)return Cancel();
         if(contacts.Length==0)waitForLift=false;
         if(!allowed)return Cancel();
-        if(contacts.Length<2) {
+        if(contacts.Length<minimumContacts) {
             if(!Active)return null;Active=false;waitForLift=contacts.Length!=0;
             return new("touchpad") { Phase="end",Contacts=[] };
         }
