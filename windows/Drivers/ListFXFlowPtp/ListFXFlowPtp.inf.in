@@ -1,0 +1,45 @@
+; Device-specific extension only. Prepare-PtpDriver.ps1 substitutes a verified
+; PTP hardware ID. Never install as a HIDClass / Mouse class-wide filter.
+[Version]
+Signature="$WINDOWS NT$"
+Class=Extension
+ClassGuid={e2f84ce7-8efa-411c-aa69-97454ca4cb57}
+ExtensionId={67205833-e52c-4a97-97af-726c09f8ed1c}
+Provider=%Provider%
+DriverVer=10/21/2026,0.2.3.42
+CatalogFile=ListFXFlowPtp.cat
+PnpLockdown=1
+[Manufacturer]
+%Provider%=Models,NTamd64.10.0...22000
+[Models.NTamd64.10.0...22000]
+%Device%=Observe,@PTP_HARDWARE_ID@
+[Observe.NT]
+CopyFiles=DriverCopy
+[Observe.NT.Services]
+AddService=ListFXFlowPtp,0x00000000,Service
+[Observe.NT.Filters]
+AddFilter=ListFXFlowPtp,,UpperFilter
+[UpperFilter]
+FilterPosition=Upper
+[Observe.NT.Wdf]
+KmdfService=ListFXFlowPtp,WdfService
+[WdfService]
+KmdfLibraryVersion=1.33
+[Service]
+DisplayName=%Device%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%13%\ListFXFlowPtp.sys
+[DestinationDirs]
+DriverCopy=13
+[DriverCopy]
+ListFXFlowPtp.sys
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+ListFXFlowPtp.sys=1
+[Strings]
+Provider="ListFXFlow"
+Device="ListFXFlow PTP read-only observer"
+Disk="ListFXFlow PTP observer"

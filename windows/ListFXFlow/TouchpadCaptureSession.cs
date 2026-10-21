@@ -16,10 +16,30 @@ internal sealed class TouchpadCaptureSession : IDisposable {
     private readonly NativeTouchpadCapture twoFinger=new();
     private readonly TouchpadContactBatch batch=new();
     private readonly TouchpadGesturesController controller;
-    private readonly Action<TouchpadContact[]> contacts;
+    private readonly Action<TouchpadContact[],double?> contacts;
     private readonly Action<string> warning;
     private readonly Action<string> activity;
     private readonly bool suppressOnly,forwardGestures;
+    private PtpHidCapture? rawCapture;
+    private readonly PtpHidStrokeGate rawStroke=new();
+    private int rawDrainScheduled;
+    internal string SourceDescription=>rawCapture?.Description ?? "SDK 触点";
+    private void ScheduleRaw(long token) {
+        if(Interlocked.Exchange(ref rawDrainScheduled,1)!=0)return;
+        dispatcher.BeginInvoke(DispatcherPriority.Background,new Action(()=> {
+            Interlocked.Exchange(ref rawDrainScheduled,0);
+            if(disposed)return;
+            if(token!=generation) {if(rawCapture?.HasPending==true)ScheduleRaw(generation);return;}
+            for(int i=0;i<32 && rawCapture!=null && rawCapture.TryRead(out var frame);i++)if(CanRead() && rawStroke.Accept(frame!.Contacts.Length))Deliver(frame.Contacts,frame.Time);
+            if(rawCapture?.HasPending==true)ScheduleRaw(token);
+        }));
+    }
+    private void RawFailed(long token,string message) {
+        dispatcher.BeginInvoke(DispatcherPriority.Background,new Action(()=> {
+            if(disposed || token!=generation)return;
+            rawCapture?.Dispose();rawCapture=null;rawStroke.Reset();batch.Reset();contacts([],null);warning(message);
+        }));
+    }
     private readonly ScrollDiagnostics scrollDiagnostics=new("scroll-worker");
     private bool active,disposed,flushQueued;
     private long generation;
@@ -29,7 +49,7 @@ internal sealed class TouchpadCaptureSession : IDisposable {
     internal bool Armed=>active && window.Foreground && controller.Enabled && (controller.SupportedGestures&All)==All;
     internal bool Active=>active;
     internal string ForegroundDescription=>window.ForegroundDescription;
-    internal TouchpadCaptureSession(Dispatcher dispatcher,Action<TouchpadContact[]> contacts,Action<string> warning,Action<string> activity,bool suppressOnly=false,Action<Message>? scroll=null,bool forwardGestures=false) {
+    internal TouchpadCaptureSession(Dispatcher dispatcher,Action<TouchpadContact[],double?> contacts,Action<string> warning,Action<string> activity,bool suppressOnly=false,Action<Message>? scroll=null,bool forwardGestures=false) {
         this.dispatcher=dispatcher;this.contacts=contacts;this.warning=warning;this.activity=activity;
         this.suppressOnly=suppressOnly;this.forwardGestures=forwardGestures;
         TouchpadDiagnostics.Write("worker","SDK capture: checking API availability");
@@ -37,7 +57,7 @@ internal sealed class TouchpadCaptureSession : IDisposable {
         controller=TouchpadGesturesController.CreateForProcess();
         TouchpadDiagnostics.Write("worker","SDK capture: controller created");
         try {
-            controller.PointerPressed+=OnPoint;controller.PointerMoved+=OnPoint;controller.PointerReleased+=OnPoint;
+            controller.PointerPressed+=OnGlobalPressed;controller.PointerMoved+=OnPoint;controller.PointerReleased+=OnPoint;
             controller.GlobalActionPerformed+=OnAction;
             controller.SupportedGestures=All;controller.Enabled=false;
             window=new() { Pointer=suppressOnly ? null:ReadTwoFinger,Cancel=suppressOnly ? null:CancelContacts,PromoteScroll=suppressOnly,
@@ -53,6 +73,12 @@ internal sealed class TouchpadCaptureSession : IDisposable {
     internal void PrepareAcquire() {
         ObjectDisposedException.ThrowIf(disposed,this);
         active=false;controller.Enabled=false;batch.Reset();twoFinger.Reset();generation++;flushQueued=false;
+        rawCapture?.Dispose();rawCapture=null;rawStroke.Reset();
+        if(suppressOnly && forwardGestures) {
+            long token=generation;
+            rawCapture=PtpHidCapture.TryOpen(()=>ScheduleRaw(token),message=>RawFailed(token,message),out string description);
+            TouchpadDiagnostics.Write("worker",description);
+        }
         if(!suppressOnly)twoFinger.Prepare();window.Prepare();
     }
     internal bool TryAcquire() {
@@ -72,12 +98,16 @@ internal sealed class TouchpadCaptureSession : IDisposable {
         return true;
     }
     private bool CanRead()=>active && !disposed && window.Foreground;
+    private void OnGlobalPressed(TouchpadGesturesController sender,PointerEventArgs args) {
+        if(CanRead())rawStroke.Pressed();
+        OnPoint(sender,args);
+    }
     private void OnPoint(TouchpadGesturesController sender,PointerEventArgs args) {
         scrollDiagnostics.Count(ScrollStage.GlobalPointer);
         // Read only SDK-owned global contacts; do not register the window for
         // two-finger pointers or steal the native wheel/pinch recognition path.
         args.Handled=true;
-        if(suppressOnly && !forwardGestures)return;
+        if(suppressOnly && (!forwardGestures || rawCapture!=null))return;
         if(!CanRead())return;
         try {
             var point=args.CurrentPoint;var p=point.Properties;
@@ -105,21 +135,21 @@ internal sealed class TouchpadCaptureSession : IDisposable {
         try { if(twoFinger.Read(id,"two-finger input window") is {} frame)Deliver(frame); }
         catch(Exception error) when(error is not AccessViolationException) { ReadFailed("双指触点",error); }
     }
-    private void Deliver(TouchpadContact[] frame) {
+    private void Deliver(TouchpadContact[] frame,double? sourceTime=null) {
         if(readFailure!=null) { readFailure=null;activity("触点读取已恢复"); }
-        contacts(frame);
+        contacts(frame,sourceTime);
     }
     private void ReadFailed(string stage,Exception error) {
         string message=stage+"："+error.Message;long now=Environment.TickCount64;
-        batch.Reset();twoFinger.Reset();contacts([]);
+        batch.Reset();twoFinger.Reset();contacts([],null);
         if(readFailure!=message || now-lastWarning>=2000) {
             readFailure=message;lastWarning=now;warning(message);
         }
     }
-    private void CancelContacts() { batch.Reset();twoFinger.Reset();if(active)contacts([]); }
+    private void CancelContacts() { batch.Reset();twoFinger.Reset();if(active)contacts([],null); }
     internal void Release() {
         scrollDiagnostics.Context="released";
-        active=false;generation++;flushQueued=false;batch.Reset();twoFinger.Reset();
+        active=false;generation++;flushQueued=false;batch.Reset();twoFinger.Reset();rawCapture?.Dispose();rawCapture=null;rawStroke.Reset();
         try { controller.Enabled=false; } finally { window?.Release(); }
     }
     public void Dispose() {
@@ -127,6 +157,6 @@ internal sealed class TouchpadCaptureSession : IDisposable {
         try { Release(); } finally { try { Unsubscribe(); } finally { window?.Dispose();scrollDiagnostics.Dispose(); } }
     }
     private void Unsubscribe() {
-        controller.PointerPressed-=OnPoint;controller.PointerMoved-=OnPoint;controller.PointerReleased-=OnPoint;controller.GlobalActionPerformed-=OnAction;
+        controller.PointerPressed-=OnGlobalPressed;controller.PointerMoved-=OnPoint;controller.PointerReleased-=OnPoint;controller.GlobalActionPerformed-=OnAction;
     }
 }

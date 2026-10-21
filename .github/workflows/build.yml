@@ -11,6 +11,10 @@ jobs:
           swift --version
       - name: Test Mac and clipboard pasteboard formats
         run: swift test
+      - name: Test native PTP report buffer with sanitizers
+        run: |
+          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined Tests/native/ptp_ring_test.c -o "$RUNNER_TEMP/ptp-ring-test"
+          "$RUNNER_TEMP/ptp-ring-test"
       - name: Build Mac installers
         env:
           SIGN_IDENTITY: '-'

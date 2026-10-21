@@ -29,12 +29,13 @@ public sealed class Message(string type)
     public TouchpadContact[]? Contacts { get; set; }
     public string? Phase { get; set; }
     public long? GestureEpoch {get;set;}
+    public double? GestureTime {get;set;}
     public long? Frames {get;set;}
     public long? Events {get;set;}
     public string? Backend {get;set;}
     public void Validate()
     {
-        bool finite = new[] { X,Y,Dx,Dy,Width,Height,Offset }.All(v => !v.HasValue || double.IsFinite(v.Value));
+        bool finite = new[] { X,Y,Dx,Dy,Width,Height,Offset,GestureTime }.All(v => !v.HasValue || double.IsFinite(v.Value));
         bool valid = finite && Type switch {
             "pointer" => Active is "mac" or "windows" && X is >= 0 and <= 1 && Y is >= 0 and <= 1,
             "key" => Key.HasValue && KeyMap.Entries.Any(k => k.Hid == Key) && Down.HasValue,
@@ -44,7 +45,7 @@ public sealed class Message(string type)
             "gameMode" => Active=="windows" && X is >=0 and <=1 && Y is >=0 and <=1 &&
                 (Down==true && Phase is "automatic" or "manual" || Down==false && Phase=="off"),
             "touchpadControl" => Down.HasValue,
-            "touchpad" => (GestureEpoch is null or >=0) && Contacts is { Length: <=5 } && Contacts.All(c=>c!=null && c.Valid) && Contacts.Select(c=>c.Id).Distinct().Count()==Contacts.Length &&
+            "touchpad" => (GestureEpoch is null or >=0) && (GestureTime is null or >=0 and <=1000000000) && Contacts is { Length: <=5 } && Contacts.All(c=>c!=null && c.Valid) && Contacts.Select(c=>c.Id).Distinct().Count()==Contacts.Length &&
                 (Phase is "begin" or "change" ? Contacts.Length>=2 : Phase is "end" or "cancel" && Contacts.Length==0),
             "touchpadFeedback" => GestureEpoch is >=0 && Frames is >=0 and <=1000000000 && Events is >=0 and <=1000000000 &&
                 Phase is "received" or "submitted" or "unavailable" && Backend is "quartz" or "virtual-hid" or "synthetic-touchpad",

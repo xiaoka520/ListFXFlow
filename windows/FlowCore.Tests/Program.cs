@@ -7,6 +7,7 @@ if(args.Length==3 && args[0]=="--fake-touchpad") { await TouchpadWorkerTests.Chi
 int passed=0;
 void Check(bool condition,string label) { if(!condition) throw new Exception(label); passed++; Console.WriteLine("PASS "+label); }
 void Reject(Action action,string label) { try { action(); } catch { Check(true,label); return; } throw new Exception(label); }
+PtpHidTests.Run(Check,Reject);
 TouchpadCaptureTests.Run(Check);
 TouchpadFeedbackTests.Run(Check);
 TouchpadForegroundTests.Run(Check);

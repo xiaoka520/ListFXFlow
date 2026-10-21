@@ -8,6 +8,15 @@ public partial class App : Application
     private RegisteredWaitHandle? showWait,exitWait;
     protected override async void OnStartup(StartupEventArgs e) {
         base.OnStartup(e);
+        if(e.Args.Contains("--touchpad-hid-diagnostics")) {
+            ShutdownMode=ShutdownMode.OnExplicitShutdown;
+            try {
+                int seconds=0,index=Array.IndexOf(e.Args,"--capture-seconds");
+                if(index>=0 && (index+1>=e.Args.Length || !int.TryParse(e.Args[index+1],out seconds)))throw new ArgumentException("采样秒数无效");
+                string path=await PtpHidDiagnostics.Run(seconds);MessageBox.Show("诊断已保存：\n"+path,"原始 HID 触控板诊断");Shutdown(0);
+            } catch(Exception error) {MessageBox.Show(error.Message,"原始 HID 触控板诊断");Shutdown(1);}
+            return;
+        }
         if(e.Args.Length==3 && e.Args[0]=="--touchpad-worker" && int.TryParse(e.Args[2],out int parent)) {
             ShutdownMode=ShutdownMode.OnExplicitShutdown;
             try {

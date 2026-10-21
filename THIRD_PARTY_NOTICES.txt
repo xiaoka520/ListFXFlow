@@ -54,6 +54,11 @@ SOFTWARE.
 
 Windows SDK .NET projection and C#/WinRT runtime
 
+The read-only Windows PTP observer uses the raw-PDO sideband pattern from
+Microsoft Windows-driver-samples/input/kbfiltr, also under the Microsoft MIT
+license reproduced below. The project does not redistribute the sample binary.
+https://github.com/microsoft/Windows-driver-samples/tree/main/input/kbfiltr
+
 The Windows build uses Microsoft.Windows.SDK.NET.Ref 10.0.28000.87, including Microsoft.Windows.SDK.NET.dll and WinRT.Runtime.dll.
 Windows SDK license: https://aka.ms/WinSDKLicenseURL
 C#/WinRT source and license: https://github.com/microsoft/CsWinRT

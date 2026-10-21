@@ -25,13 +25,14 @@ public struct Message: Codable, Equatable {
     public var contacts: [TouchpadContact]?
     public var phase: String?
     public var gestureEpoch:Int64?
+    public var gestureTime:Double?
     public var frames:Int64?
     public var events:Int64?
     public var backend:String?
     public init(_ type: String) { self.type = type }
 
     public func validate() throws {
-        let finite = [x,y,dx,dy,width,height,offset].compactMap { $0 }.allSatisfy { $0.isFinite }
+        let finite = [x,y,dx,dy,width,height,offset,gestureTime].compactMap { $0 }.allSatisfy { $0.isFinite }
         guard finite else { throw FlowError.invalidMessage }
         switch type {
         case "pointer":
@@ -46,7 +47,7 @@ public struct Message: Codable, Equatable {
                   (down==true && ["automatic","manual"].contains(phase ?? "")) || (down==false && phase=="off") else { throw FlowError.invalidMessage }
         case "touchpadControl": guard down != nil else { throw FlowError.invalidMessage }
         case "touchpad":
-            guard gestureEpoch.map({ $0>=0 }) ?? true,let contacts,contacts.count<=5,Set(contacts.map(\.id)).count==contacts.count,
+            guard gestureEpoch.map({ $0>=0 }) ?? true,gestureTime.map({ (0...1_000_000_000).contains($0) }) ?? true,let contacts,contacts.count<=5,Set(contacts.map(\.id)).count==contacts.count,
                   contacts.allSatisfy({ $0.valid }),["begin","change","end","cancel"].contains(phase ?? ""),
                   (phase=="begin" || phase=="change" ? contacts.count>=2:contacts.isEmpty) else { throw FlowError.invalidMessage }
         case "touchpadFeedback":

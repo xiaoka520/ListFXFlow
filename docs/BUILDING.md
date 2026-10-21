@@ -33,6 +33,8 @@ dotnet publish windows/ListFXFlow/ListFXFlow.csproj -c Release -r win-x64 \
 
 自动化检查见 [GitHub Actions 配置](../.github/workflows/build.yml)。网络协议互通测试见 [验证记录](VALIDATION.md)；消息格式与身份协商见 [协议说明](PROTOCOL.md)。
 
+Windows 原始触点观察驱动是独立的开发试验，不随普通安装包安装。设备诊断、只读采样、WDK 构建和单设备包准备见 [PTP 驱动说明](PTP-DRIVER.md)。
+
 ## 实现依据
 
 - [Apple：IP over Thunderbolt](https://support.apple.com/guide/mac-help/mchld53dd2f5/mac) 说明雷雳网桥的 IP 通信。Apple 页面面向 Mac-to-Mac，Windows 端的条件需结合微软文档和真机检查。

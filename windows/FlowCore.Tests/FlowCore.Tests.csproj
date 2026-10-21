@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
   <ItemGroup>
+    <Compile Include="../ListFXFlow/PtpHidProtocol.cs" Link="PtpHidProtocol.cs" />
+    <Compile Include="../ListFXFlow/PtpHidStrokeGate.cs" Link="PtpHidStrokeGate.cs" />
+    <Compile Include="../ListFXFlow/PtpHidFrames.cs" Link="PtpHidFrames.cs" />
+    <Compile Include="../ListFXFlow/PtpHidNative.cs" Link="PtpHidNative.cs" />
     <Compile Include="../ListFXFlow/ConnectionPreferences.cs" Link="ConnectionPreferences.cs" />
     <Compile Include="../ListFXFlow/GameProtection.cs" Link="GameProtection.cs" />
     <Compile Include="../ListFXFlow/TouchpadFocusLease.cs" Link="TouchpadFocusLease.cs" />

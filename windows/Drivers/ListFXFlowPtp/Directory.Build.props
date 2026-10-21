@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup><DriverPackages>$(MSBuildThisFileDirectory)..\..\..\.build\driver-packages\</DriverPackages></PropertyGroup>
+  <Import Project="$(DriverPackages)Microsoft.Windows.WDK.x64.10.0.28000.2526\build\native\Microsoft.Windows.WDK.x64.props"/>
+  <Import Project="$(DriverPackages)Microsoft.Windows.SDK.CPP.x64.10.0.28000.2526\build\native\Microsoft.Windows.SDK.cpp.x64.props"/>
+  <Import Project="$(DriverPackages)Microsoft.Windows.SDK.CPP.10.0.28000.2526\build\native\Microsoft.Windows.SDK.cpp.props"/>
+</Project>

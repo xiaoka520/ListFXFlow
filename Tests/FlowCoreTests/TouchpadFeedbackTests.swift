@@ -64,6 +64,26 @@ final class TouchpadFeedbackTests:XCTestCase {
         let fresh=try XCTUnwrap(receiver.receive(frame("begin",4),at:1.03))
         XCTAssertEqual(fresh.frames,1);XCTAssertEqual(fresh.events,0)
     }
+    func testRawSourceClockControlsVelocityInsteadOfNetworkArrivalSpacing() throws {
+        var gestures=[NativeTouchpadGesture]()
+        let receiver=MacGestureReceiver { gestures.append($0);return true }
+        var m=Message("touchpad");m.phase="begin";m.gestureEpoch=42;m.gestureTime=100
+        m.contacts=[.init(id:0,x:0.2,y:0.5),.init(id:1,x:0.5,y:0.5),.init(id:2,x:0.8,y:0.5)]
+        _=receiver.receive(m,at:1)
+        m.phase="change";m.gestureTime=100.05;m.contacts=m.contacts!.map{.init(id:$0.id,x:$0.x-0.03,y:$0.y)}
+        _=receiver.receive(m,at:10) // Deliberately unrelated network delay.
+        var end=Message("touchpad");end.phase="end";end.gestureEpoch=42;end.gestureTime=100.06;end.contacts=[]
+        _=receiver.receive(end,at:20)
+        XCTAssertEqual(try XCTUnwrap(gestures.last).velocity,39,accuracy:0.001)
+        m.phase="begin";m.gestureTime=200;_=receiver.receive(m,at:21)
+        m.phase="change";m.gestureTime=200.05;m.contacts=m.contacts!.map{.init(id:$0.id,x:$0.x-0.03,y:$0.y)}
+        _=receiver.receive(m,at:22)
+        m.gestureTime=200.01
+        XCTAssertNil(receiver.receive(m,at:22.1))
+        XCTAssertEqual(gestures.last?.phase,"cancel")
+        m.gestureTime = -1;XCTAssertThrowsError(try m.validate())
+        m.gestureTime = .nan;XCTAssertThrowsError(try m.validate())
+    }
     func testMalformedFeedbackCannotEnterEncryptedProtocol() throws {
         var feedback=Message("touchpadFeedback");feedback.gestureEpoch=3;feedback.frames=1;feedback.events=0;feedback.phase="received";feedback.backend="quartz"
         try feedback.validate()
