@@ -16,6 +16,7 @@ try {
     Copy-Item .build/ptp-driver/ListFXFlowPtp.sys $out
     Copy-Item windows/Drivers/ListFXFlowPtp/ListFXFlowPtp.inf.in $out
     Copy-Item scripts/Prepare-PtpDriver.ps1 $out
+    Copy-Item scripts/ptp-trial/Manage-PtpTrial.ps1,scripts/ptp-trial/Try-Install.cmd,scripts/ptp-trial/Rollback.cmd,scripts/ptp-trial/Trial-README.txt $out
     Copy-Item docs/PTP-DRIVER.md (Join-Path $out 'README.md')
     Copy-Item LICENSE,THIRD_PARTY_NOTICES.txt $out
     # A model-level profile from device diagnostics, with no instance/serial data.

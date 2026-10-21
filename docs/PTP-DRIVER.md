@@ -56,6 +56,14 @@ WDK / SDK NuGet 固定为 10.0.28000.2526，KMDF 1.33，Desktop / x64。产物�
 
 该配置包仍是未签名开发产物，没有生成签名 CAT，不能当作可直接安装的发行包。当前没有可用的 Microsoft Hardware 签名账号及关联证书，正常安全配置下的部署因此尚未完成；普通应用继续使用 SDK。[微软内核驱动签名策略](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/kernel-mode-code-signing-policy--windows-vista-and-later-)及[签名账号与证书要求](https://learn.microsoft.com/en-us/windows-hardware/drivers/dashboard/code-signing-reqs)说明了提交与加载条件。
 
+### 手动尝试安装与回滚
+
+专用配置包附带 `Try-Install.cmd`。完整解压并接好外接鼠标后，右键以管理员身份运行，会验证驱动哈希和精确 INF，再实际执行 `pnputil /add-driver ListFXFlowPtp.inf /install`，把原始输出、退出码和匹配设备的 stack / drivers 查询写入同目录 `ptp-install-时间.log`。缺少签名 CAT 不会被脚本提前拦截，最终由 Windows 当前策略决定。脚本不更改启动签名策略、Secure Boot 或内存完整性，不自动重启。
+
+PnPUtil 接受安装不能证明驱动加载或触点可读。若安装失败或观察器仍为空，请先提供安装日志。若被接受，再以管理员身份进行十秒只读采样。过滤器失败可能让设备栈无法启动，测试时应有外接鼠标作为退路。[微软开发测试说明](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/installing-an-unsigned-driver-during-development-and-test)解释了加载签名策略和过滤器影响。
+
+回滚运行 `Rollback.cmd`，输入安装输出中的发布名称（`oem数字.inf`）。它核对 Windows INF 中本项目的 ExtensionId、服务和本包硬件 ID 后，仅执行该包的 `pnputil /delete-driver oem数字.inf /uninstall`，不使用 `/force` 或 `/reboot`。安装被拒绝且未生成发布名称时，不必执行回滚。命令依据见 [PnPUtil 文档](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/pnputil-command-syntax)。
+
 ## 尚需实机验证
 
 当前 Mac 无法加载 Windows 内核驱动。Windows CI 构建、缓冲区测试和模拟帧测试不能证明这台笔记本的过滤器附着层级、Read 完成回调、实际 HID report 布局、拔插 / 睡眠 / 恢复、卸载与原输入放行可靠。拿到设备诊断、有效签名和测试环境后，先完成这些验证，再开发内核输入接管；当前包没有提供内核屏蔽开关。

@@ -23,7 +23,7 @@ if (-not (Test-Path -LiteralPath $sys) -or -not (Test-Path -LiteralPath $templat
 if (Test-Path -LiteralPath $OutputDirectory) { throw 'Output directory already exists; choose a new folder' }
 New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
 Copy-Item -LiteralPath $sys -Destination $OutputDirectory
-foreach ($name in @('LICENSE','THIRD_PARTY_NOTICES.txt','README.md')) {
+foreach ($name in @('LICENSE','THIRD_PARTY_NOTICES.txt','README.md','Manage-PtpTrial.ps1','Try-Install.cmd','Rollback.cmd','Trial-README.txt')) {
     $notice=Join-Path $PackageDirectory $name
     if(Test-Path -LiteralPath $notice) { Copy-Item -LiteralPath $notice -Destination $OutputDirectory }
 }

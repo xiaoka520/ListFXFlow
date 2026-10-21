@@ -1,9 +1,9 @@
 name: Build PTP observer driver
 on:
   push:
-    paths: ['windows/Drivers/**', 'scripts/*ptp*.ps1', 'scripts/Prepare-PtpDriver.ps1', 'docs/PTP-DRIVER.md', '.github/workflows/ptp-driver.yml']
+    paths: ['windows/Drivers/**', 'scripts/*ptp*.ps1', 'scripts/Prepare-PtpDriver.ps1', 'scripts/ptp-trial/**', 'docs/PTP-DRIVER.md', '.github/workflows/ptp-driver.yml']
   pull_request:
-    paths: ['windows/Drivers/**', 'scripts/*ptp*.ps1', 'scripts/Prepare-PtpDriver.ps1', '.github/workflows/ptp-driver.yml']
+    paths: ['windows/Drivers/**', 'scripts/*ptp*.ps1', 'scripts/Prepare-PtpDriver.ps1', 'scripts/ptp-trial/**', '.github/workflows/ptp-driver.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,6 +24,9 @@ jobs:
       - name: Test exact-device package preparation (no installation)
         shell: pwsh
         run: ./scripts/test-ptp-package.ps1
+      - name: Validate trial package and rollback scope (no installation)
+        shell: powershell
+        run: ./scripts/ptp-trial/test-validation.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: ListFXFlow-PTP-Observer-Unsigned-x64
