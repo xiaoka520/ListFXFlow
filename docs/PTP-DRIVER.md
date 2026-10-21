@@ -40,7 +40,7 @@ PTP HID collection → 原有系统 Read 请求完成 → 驱动环形缓冲中�
 ./scripts/build-ptp-driver.ps1
 ```
 
-WDK / SDK NuGet 固定为 10.0.28000.2526，KMDF 1.33，x64。产物在 `artifacts/PTP-Driver-Experimental/`，是 **未签名开发产物**。CI 不安装驱动，只构建和验证公共 ABI。
+WDK / SDK NuGet 固定为 10.0.28000.2526，KMDF 1.33，Desktop / x64。产物在 `artifacts/PTP-Driver-Experimental/`，是 **未签名开发产物**。CI 不安装驱动，构建二进制、验证公共 ABI，并对使用测试硬件 ID 生成的 INF 执行 `InfVerif /w`。此 NuGet 包不包含其旧构建目标调用的 ApiValidator，当前没有宣称通过 Universal API layering 校验；完整签名、HLK 和运行时 Driver Verifier 尚待进行。
 
 ```powershell
 ./Prepare-PtpDriver.ps1 -DiagnosticsFile '实际路径\touchpad-hid.json'
