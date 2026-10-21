@@ -439,3 +439,10 @@ dotnet publish windows/ListFXFlow/ListFXFlow.csproj -c Release -r win-x64 \
 - Windows 驱动 CI [39551570923](https://github.com/xiaoka520/ListFXFlow/actions/runs/39551570923) 完成，编译 / 链接零警告错误，单设备 INF 的 InfVerif /w 与包准备拒绝分支检查通过；已下载并验证 x64 Native 未签名 PE，另放独立开发 ZIP。双端应用 CI [39551570844](https://github.com/xiaoka520/ListFXFlow/actions/runs/39551570844) 的 Mac / Windows 测试和安装包构建均通过，包括 Windows 原生剪贴板格式测试。
 - Mac arm64、Windows x64 自包含应用与安装器构建完成。Mac strict/deep 签名、DMG 校验与只读挂载、build 42、背景 / Applications 链接、双端 ZIP CRC、Windows 内嵌载荷版本 / 大小 / SHA-256 与发布程序一致性检查通过。旧 build 41 成品移入废纸篓，artifacts 只保留 build 42；未替换或重启已安装应用。
 - 当前没有 Windows 实体触控板和已签名驱动加载结果。构建和模拟输入不能证明真实过滤器附着、硬件报告读取、睡眠 / 拔插恢复、原输入放行或 macOS 手势接受。当前驱动是未签名开发产物，未完成 HLK / Driver Verifier / Universal API layering 验证，不应当作已完成后台内核接管。
+
+### ASUF1209 / Col02 设备诊断后续
+
+- 用户提供的 build 42 / Windows 26300 诊断确认：唯一物理 PTP collection 为 `HID\VEN_ASUF&DEV_1209&Col02`，Usage Page=13、Usage=5、输入报告长度=50。InventoryError 为空，Observers 为空，未请求采样。这证明型号级元数据可读，不代表原始报告已经读取或转发。
+- 新增不含实例、序列号或采集时间的型号配置，构建专用 INF 与 target.json 并保留许可。匹配仅限该 collection。重复构建将旧开发产物保留在 .build，避免遗留 CAT 与新二进制混用。
+- 驱动 CI [39564586641](https://github.com/xiaoka520/ListFXFlow/actions/runs/39564586641) 通过编译、链接、专用 INF 的 InfVerif /w 和准备工具检查。应用及驱动版本仍为 0.2.3 build 42；本次没有改动输入代码或重新打包双端应用。
+- 用户确认没有 Microsoft Hardware 签名账号及关联证书。专用配置包没有签名 CAT，仍不可作为默认安全配置下可加载的发行驱动；未安装或更改任何系统设置。实际 HID 布局、报告采样与手势效果仍未验收。
