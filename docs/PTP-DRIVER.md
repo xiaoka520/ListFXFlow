@@ -60,6 +60,8 @@ WDK / SDK NuGet 固定为 10.0.28000.2526，KMDF 1.33，Desktop / x64。产物�
 
 专用配置包附带 `Try-Install.cmd`。完整解压并接好外接鼠标后，右键以管理员身份运行，会验证驱动哈希和精确 INF，再实际执行 `pnputil /add-driver ListFXFlowPtp.inf /install`，把原始输出、退出码和匹配设备的 stack / drivers 查询写入同目录 `ptp-install-时间.log`。缺少签名 CAT 不会被脚本提前拦截，最终由 Windows 当前策略决定。脚本不更改启动签名策略、Secure Boot 或内存完整性，不自动重启。
 
+通用 Observer 包根目录没有 target.json；入口会定位 `Profiles` 中唯一的专用配置，而专用包仍直接使用根目录配置。缺少配置或存在多个型号时显示明确错误，不任意选择设备。日志仍写入入口所在目录。旧包若在根目录报 target.json 不存在，可进入 `Profiles\ASUF1209-Col02` 运行该目录的入口。
+
 PnPUtil 接受安装不能证明驱动加载或触点可读。若安装失败或观察器仍为空，请先提供安装日志。若被接受，再以管理员身份进行十秒只读采样。过滤器失败可能让设备栈无法启动，测试时应有外接鼠标作为退路。[微软开发测试说明](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/installing-an-unsigned-driver-during-development-and-test)解释了加载签名策略和过滤器影响。
 
 回滚运行 `Rollback.cmd`，输入安装输出中的发布名称（`oem数字.inf`）。它核对 Windows INF 中本项目的 ExtensionId、服务和本包硬件 ID 后，仅执行该包的 `pnputil /delete-driver oem数字.inf /uninstall`，不使用 `/force` 或 `/reboot`。安装被拒绝且未生成发布名称时，不必执行回滚。命令依据见 [PnPUtil 文档](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/pnputil-command-syntax)。

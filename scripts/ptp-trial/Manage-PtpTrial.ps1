@@ -4,6 +4,20 @@ param(
 )
 $ErrorActionPreference='Stop'
 
+function Resolve-PtpTrialDirectory([string]$Directory) {
+    # Dedicated ZIPs keep the manifest beside the launcher. The generic ZIP
+    # keeps model packages one level below Profiles. Never guess among models.
+    if(Test-Path -LiteralPath (Join-Path $Directory 'target.json') -PathType Leaf) { return $Directory }
+    $profiles=Join-Path $Directory 'Profiles'
+    if(-not(Test-Path -LiteralPath $profiles -PathType Container)) { throw 'No target.json or Profiles folder. Extract the complete dedicated ZIP first.' }
+    $candidates=@(Get-ChildItem -LiteralPath $profiles -Directory | Where-Object {
+        -not($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -and
+        (Test-Path -LiteralPath (Join-Path $_.FullName 'target.json') -PathType Leaf)
+    })
+    if($candidates.Count -eq 0) { throw 'No prepared target in Profiles. Extract the complete package first.' }
+    if($candidates.Count -ne 1) { throw 'Multiple model packages found. Run the launcher inside the intended Profiles subfolder.' }
+    return $candidates[0].FullName
+}
 function Get-PtpTrialTarget([string]$Directory,[switch]$ForRollback) {
     $target=Get-Content -Raw -LiteralPath (Join-Path $Directory 'target.json') | ConvertFrom-Json
     $id=[string]$target.HardwareId
@@ -37,8 +51,11 @@ function Invoke-PtpTrial([string]$Directory,[string]$Mode,[string]$Name) {
     $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
     $principal=New-Object Security.Principal.WindowsPrincipal($identity)
     if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Right-click Try-Install.cmd or Rollback.cmd and choose Run as administrator.' }
+    $logDirectory=$Directory
+    $Directory=Resolve-PtpTrialDirectory $Directory
+    Write-Host ('Package: '+$Directory)
     $id=Get-PtpTrialTarget $Directory -ForRollback:($Mode -eq 'Rollback')
-    $log=Join-Path $Directory ('ptp-'+$Mode.ToLowerInvariant()+'-'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'.log')
+    $log=Join-Path $logDirectory ('ptp-'+$Mode.ToLowerInvariant()+'-'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'.log')
     if($Mode -eq 'Install') {
         Write-Host 'Trying the exact PTP extension under the CURRENT Windows signing policy.'
         Write-Host 'An unsigned or missing catalog may be rejected. No boot/security setting will be changed.'
