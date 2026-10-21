@@ -24,7 +24,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile><WarningLevel>Level4</WarningLevel><TreatWarningAsError>true</TreatWarningAsError><CompileAs>CompileAsC</CompileAs></ClCompile>
-    <Link><AdditionalDependencies>%(AdditionalDependencies);hidparse.lib</AdditionalDependencies></Link>
+    <Link><AdditionalDependencies>%(AdditionalDependencies);hidparse.lib;wdmsec.lib</AdditionalDependencies></Link>
   </ItemDefinitionGroup>
   <ItemGroup><ClCompile Include="Driver.c"/><ClInclude Include="Protocol.h"/><ClInclude Include="ReportRing.h"/></ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets"/>
