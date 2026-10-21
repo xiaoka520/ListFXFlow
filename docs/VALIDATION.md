@@ -426,3 +426,16 @@ dotnet publish windows/ListFXFlow/ListFXFlow.csproj -c Release -r win-x64 \
 - Windows 核心 283 项检查通过，Swift/.NET TCP 互通 304 项检查通过。新增覆盖 device=0 双轴分数滚动不被丢弃、实体鼠标转换一致、普通移动不会变成滚动，以及 10,000 次并发计数的精确性和无同步日志写入。WPF 编译与 x64 自包含发布通过，零警告/错误。
 - VERSION 保持 0.2.3；Windows build 40，Mac 38 保留。原生 Windows 26300 触控板行为仍需用户实机验收，本次不以核心/模拟进程/TCP 结果宣称已完成原生验收。未替换已安装应用或更改系统设置。
 - 成品检查通过：Windows x64 安装器和程序版本 0.2.3.40，内嵌载荷版本/大小/SHA-256 与实际程序一致；免安装 ZIP CRC、程序内容、最新说明文件与无重复条目检查通过。最终四包 SHA256SUMS 校验通过，Mac 38 哈希不变，旧 Windows 39 成品移至废纸篓。
+
+## 0.2.3 build 42 — Windows 原始 PTP 报告观察通道
+
+日期：2026-10-21，Asia/Shanghai。
+
+- 新增独立 KMDF 上层只读过滤器：观察已成功完成的 HID Read，保持原报告、完成状态和长度。单设备 raw PDO 使用管理员 / SYSTEM ACL、独占读取和 FILE_DEVICE_SECURE_OPEN。没有改变路由、屏蔽、设备模式或写入配置的 IOCTL；普通应用安装器不安装此驱动。
+- 用户态在隔离工作进程读取旁路，按 HID preparsed capabilities 映射每个触点，验证完整帧、序号、扫描时间、Tip / Confidence 与逻辑坐标范围，保持硬件 ID 到协议槽位的稳定映射。报告丢失、无效布局、设备或权限错误取消当前手势并回退 SDK。原始观察必须由新的 SDK 手势按下授权，不能跨屏接走 Windows 中已经开始的手势；本阶段仍依赖 SDK 前台所有权。
+- 增加只读设备诊断与按精确硬件 ID 生成 INF 的准备工具。诊断不记录坐标、按键、剪贴板或设备序列号；无驱动时仍可查询硬件 ID。准备工具不安装、不重启、不改变注册表或安全设置，拒绝通用 HID 类与设备歧义。详见 [PTP-DRIVER.md](PTP-DRIVER.md)。
+- 可选 gestureTime 在 Swift / .NET 间保留源单调时间；Mac 用它计算手势速度，反馈节流仍用接收时间。时间倒退取消手势，旧端仍可忽略新字段。
+- 本机 Swift 70 项测试、Windows 核心 323 项检查、Swift / .NET 加密 loopback 互通共 345 项检查通过。新增覆盖 HID ABI、元数据与缓冲边界、混合报告组帧、触点排序 / 抬起 / 掌压、缺失活跃坐标、源时间与网络到达时间分离、跨屏手势授权。C 环形缓冲在 ASan / UBSan 下通过 10,000 报告溢出、FIFO、短缓冲和字节完整性检查；实际 WDK 头文件下的 x64 C 语法检查通过。
+- Windows 驱动 CI [39551570923](https://github.com/xiaoka520/ListFXFlow/actions/runs/39551570923) 完成，编译 / 链接零警告错误，单设备 INF 的 InfVerif /w 与包准备拒绝分支检查通过；已下载并验证 x64 Native 未签名 PE，另放独立开发 ZIP。双端应用 CI [39551570844](https://github.com/xiaoka520/ListFXFlow/actions/runs/39551570844) 的 Mac / Windows 测试和安装包构建均通过，包括 Windows 原生剪贴板格式测试。
+- Mac arm64、Windows x64 自包含应用与安装器构建完成。Mac strict/deep 签名、DMG 校验与只读挂载、build 42、背景 / Applications 链接、双端 ZIP CRC、Windows 内嵌载荷版本 / 大小 / SHA-256 与发布程序一致性检查通过。旧 build 41 成品移入废纸篓，artifacts 只保留 build 42；未替换或重启已安装应用。
+- 当前没有 Windows 实体触控板和已签名驱动加载结果。构建和模拟输入不能证明真实过滤器附着、硬件报告读取、睡眠 / 拔插恢复、原输入放行或 macOS 手势接受。当前驱动是未签名开发产物，未完成 HLK / Driver Verifier / Universal API layering 验证，不应当作已完成后台内核接管。
