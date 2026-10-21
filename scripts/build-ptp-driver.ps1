@@ -12,5 +12,6 @@ try {
     Copy-Item windows/Drivers/ListFXFlowPtp/ListFXFlowPtp.inf.in $out
     Copy-Item scripts/Prepare-PtpDriver.ps1 $out
     Copy-Item docs/PTP-DRIVER.md (Join-Path $out 'README.md')
+    Copy-Item LICENSE,THIRD_PARTY_NOTICES.txt $out
     Write-Host 'Built unsigned read-only observer; no device was modified or driver installed.'
 } finally { Pop-Location }
