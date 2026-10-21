@@ -58,7 +58,16 @@ function Invoke-PtpTrial([string]$Directory,[string]$Mode,[string]$Name) {
     $log=Join-Path $logDirectory ('ptp-'+$Mode.ToLowerInvariant()+'-'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'.log')
     if($Mode -eq 'Install') {
         Write-Host 'Trying the exact PTP extension under the CURRENT Windows signing policy.'
-        Write-Host 'An unsigned or missing catalog may be rejected. No boot/security setting will be changed.'
+        if(Test-Path -LiteralPath (Join-Path $Directory 'test-signing.json')) {
+            . (Join-Path $Directory 'Manage-TestCertificate.ps1')
+            $cert=Get-PtpTestCertificate $Directory
+            try {
+                foreach($file in @('ListFXFlowPtp.sys','ListFXFlowPtp.cat')) {
+                    if((Get-AuthenticodeSignature -LiteralPath (Join-Path $Directory $file)).Status -ne 'Valid') { throw 'Import this package test certificate before installation.' }
+                }
+            } finally { $cert.Dispose() }
+            Write-Host 'Test-signed package. Windows must already be configured for loading test-signed drivers.'
+        } else { Write-Host 'An unsigned or missing catalog may be rejected. No boot/security setting will be changed.' }
         $result=Invoke-PtpTrialPnP @('/add-driver',(Join-Path $Directory 'ListFXFlowPtp.inf'),'/install')
     } else {
         if(-not $Name) { $Name=Read-Host 'Published name from the install log (oem123.inf), or Enter to cancel' }

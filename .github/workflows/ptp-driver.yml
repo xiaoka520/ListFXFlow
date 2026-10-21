@@ -1,9 +1,9 @@
 name: Build PTP observer driver
 on:
   push:
-    paths: ['windows/Drivers/**', 'scripts/*ptp*.ps1', 'scripts/Prepare-PtpDriver.ps1', 'scripts/ptp-trial/**', 'docs/PTP-DRIVER.md', '.github/workflows/ptp-driver.yml']
+    paths: ['windows/Drivers/**', 'scripts/*ptp*.ps1', 'scripts/Prepare-PtpDriver.ps1', 'scripts/ptp-trial/**', 'scripts/ptp-test-signing/**', 'docs/PTP-DRIVER.md', '.github/workflows/ptp-driver.yml']
   pull_request:
-    paths: ['windows/Drivers/**', 'scripts/*ptp*.ps1', 'scripts/Prepare-PtpDriver.ps1', 'scripts/ptp-trial/**', '.github/workflows/ptp-driver.yml']
+    paths: ['windows/Drivers/**', 'scripts/*ptp*.ps1', 'scripts/Prepare-PtpDriver.ps1', 'scripts/ptp-trial/**', 'scripts/ptp-test-signing/**', '.github/workflows/ptp-driver.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -27,8 +27,19 @@ jobs:
       - name: Validate trial package and rollback scope (no installation)
         shell: powershell
         run: ./scripts/ptp-trial/test-validation.ps1
+      - name: Produce test-signed ASUF1209 package (no installation)
+        shell: powershell
+        run: ./scripts/sign-ptp-test-package.ps1
+      - name: Verify public certificate and explicit trust cleanup (no driver installation)
+        shell: powershell
+        run: ./scripts/ptp-test-signing/test-package.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: ListFXFlow-PTP-Observer-Unsigned-x64
           if-no-files-found: error
           path: artifacts/PTP-Driver-Experimental/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ListFXFlow-PTP-ASUF1209-Col02-TestSigned-x64
+          if-no-files-found: error
+          path: artifacts/PTP-Driver-TestSigned/ASUF1209-Col02/
