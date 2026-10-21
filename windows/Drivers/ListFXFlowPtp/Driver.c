@@ -148,6 +148,8 @@ static NTSTATUS CreateSideband(WDFDEVICE parent) {
     if(!init)return STATUS_INSUFFICIENT_RESOURCES;
     status=WdfPdoInitAssignRawDevice(init,&RawClassGuid);if(!NT_SUCCESS(status))goto fail;
     status=WdfDeviceInitAssignSDDLString(init,&SDDL_DEVOBJ_SYS_ALL_ADM_ALL);if(!NT_SUCCESS(status))goto fail;
+    WdfDeviceInitSetDeviceType(init,FILE_DEVICE_UNKNOWN);
+    WdfDeviceInitSetCharacteristics(init,FILE_DEVICE_SECURE_OPEN,TRUE);
     WdfDeviceInitSetExclusive(init,TRUE);WdfPdoInitAllowForwardingRequestToParent(init);
     status=WdfPdoInitAssignDeviceID(init,&id);if(!NT_SUCCESS(status))goto fail;
     status=WdfPdoInitAssignInstanceID(init,&instance);if(!NT_SUCCESS(status))goto fail;

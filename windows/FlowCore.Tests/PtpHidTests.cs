@@ -52,6 +52,11 @@ internal static class PtpHidTests {
         check(decoded.ContactCount==3 && decoded.ScanTime==42 && decoded.Contacts[1] is {Id:2,Tip:true,Confidence:true,X:.4,Y:.5},"HID capability mapping decodes per-finger fields using actual device axes");
         values.Remove(4);decoded=PtpHidDecoder.DecodeData(fields.ToArray(),values)!;
         check(!decoded.Contacts[0].Confidence,"an absent inactive HID button value is false, not a stale prior value");
+        values[5]=uint.MaxValue;decoded=PtpHidDecoder.DecodeData(fields.ToArray(),values)!;
+        check(decoded.Contacts[0].X==0,"inactive padding coordinates do not create a false parser failure");
+        values[4]=1;values.Remove(5);
+        reject(()=>PtpHidDecoder.DecodeData(fields.ToArray(),values),"active fingers require actual axis data instead of fabricated zero coordinates");
+        values[5]=200;
         reject(()=>PtpHidDecoder.DecodeData(fields.Where(f=>!(f.Link==1 && f.Usage==0x42)).ToArray(),values),"incomplete finger layouts cannot masquerade as valid raw input");
         var timed=new Message("touchpad") {Phase="begin",GestureEpoch=1,GestureTime=1234.5,Contacts=[new(0,.2,.3),new(1,.4,.5),new(2,.6,.7)]};
         timed.Validate();check(timed.GestureTime==1234.5,"source sample clock travels with the normalized gesture frame");

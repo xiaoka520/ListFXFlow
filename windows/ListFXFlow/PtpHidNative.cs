@@ -140,6 +140,7 @@ internal sealed class PtpHidDecoder : IDisposable {
         Field? Top(ushort page,ushort usage)=>fields.FirstOrDefault(f=>f.Page==page && f.Usage==usage);
         var contactCount=Top(13,0x54);var time=Top(13,0x56);
         if(contactCount==null || time==null)return null;
+        if(!values.ContainsKey(contactCount.Index) || !values.ContainsKey(time.Index))throw new InvalidDataException("PTP report lacks frame metadata");
         var contacts=new List<PtpHidContact>();
         foreach(var group in fields.GroupBy(f=>f.Link).OrderBy(g=>g.Key)) {
             Field? Get(ushort page,ushort usage)=>group.FirstOrDefault(f=>f.Page==page && f.Usage==usage);
@@ -147,6 +148,8 @@ internal sealed class PtpHidDecoder : IDisposable {
             var tip=Get(13,0x42);var confidence=Get(13,0x47);var x=Get(1,0x30);var y=Get(1,0x31);
             if(tip==null || confidence==null || x==null || y==null)throw new NotSupportedException("Incomplete PTP finger collection");
             bool touching=Value(tip)!=0,confident=Value(confidence)!=0;
+            if(touching && confident && (!values.ContainsKey(id.Index) || !values.ContainsKey(x.Index) || !values.ContainsKey(y.Index)))
+                throw new InvalidDataException("Active PTP contact lacks identity or coordinates");
             contacts.Add(new(Value(id),touching,confident,touching && confident ? Coordinate(Value(x),x):0,touching && confident ? Coordinate(Value(y),y):0));
         }
         if(contacts.Count==0)return null;
