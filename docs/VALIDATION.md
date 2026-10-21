@@ -446,3 +446,9 @@ dotnet publish windows/ListFXFlow/ListFXFlow.csproj -c Release -r win-x64 \
 - 新增不含实例、序列号或采集时间的型号配置，构建专用 INF 与 target.json 并保留许可。匹配仅限该 collection。重复构建将旧开发产物保留在 .build，避免遗留 CAT 与新二进制混用。
 - 驱动 CI [39564586641](https://github.com/xiaoka520/ListFXFlow/actions/runs/39564586641) 通过编译、链接、专用 INF 的 InfVerif /w 和准备工具检查。应用及驱动版本仍为 0.2.3 build 42；本次没有改动输入代码或重新打包双端应用。
 - 用户确认没有 Microsoft Hardware 签名账号及关联证书。专用配置包没有签名 CAT，仍不可作为默认安全配置下可加载的发行驱动；未安装或更改任何系统设置。实际 HID 布局、报告采样与手势效果仍未验收。
+
+### 用户授权后的 PnPUtil 安装尝试入口
+
+- 专用包新增 Try-Install.cmd、Rollback.cmd 和说明。用户主动运行时按当前 Windows 策略执行精确 INF 的 /add-driver /install，记录 PnPUtil 原始输出、退出码与设备栈；没有因缺少签名提前禁止尝试。PnPUtil 接受操作与实际加载、触点读取保持分开判断。普通双端应用和 build 42 输入代码未改动。
+- 回滚要求明确的 oem数字.inf，并核对 Windows INF 中本项目的 ExtensionId、服务和本包硬件 ID，仅执行 /delete-driver /uninstall。拒绝系统 INF、路径穿越、附加参数和其他服务；本地载荷损坏不阻碍核实已安装包后回滚。
+- [Windows CI 39566966622](https://github.com/xiaoka520/ListFXFlow/actions/runs/39566966622) 通过驱动构建、INF 验证、包准备与 Windows PowerShell 校验测试。测试没有执行安装命令，不能证明实体触控板上的安装或加载结果。脚本不调整启动安全配置、不自动重启；未知过滤器的安装测试需备好外接鼠标。
