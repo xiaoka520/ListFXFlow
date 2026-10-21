@@ -60,6 +60,7 @@ function Invoke-PtpTrial([string]$Directory,[string]$Mode,[string]$Name) {
         Write-Host 'Trying the exact PTP extension under the CURRENT Windows signing policy.'
         if(Test-Path -LiteralPath (Join-Path $Directory 'test-signing.json')) {
             . (Join-Path $Directory 'Manage-TestCertificate.ps1')
+            Assert-PtpTestSigningEnabled (Get-PtpCodeIntegrityOptions)
             $cert=Get-PtpTestCertificate $Directory
             try {
                 foreach($file in @('ListFXFlowPtp.sys','ListFXFlowPtp.cat')) {

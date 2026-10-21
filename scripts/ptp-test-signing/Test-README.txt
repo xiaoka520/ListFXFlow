@@ -18,4 +18,6 @@ ListFXFlow ASUF1209 / Col02 测试签名驱动
 
 证书导入／清理和驱动安装都是独立入口；签名包验证不能证明实体触控板上的加载、稳定性或手势效果。此驱动仍只观察报告，不提供内核手势屏蔽；现有 SDK 继续负责本机屏蔽。
 
+安装入口会只读查询当前正在生效的 Code Integrity 标志；仅修改 BCD 而未重启不算开启成功。若当前会话尚未允许测试签名驱动，入口会在修改设备栈前停止。不会自动关闭内存完整性。
+
 微软测试签名说明：https://learn.microsoft.com/en-us/windows-hardware/drivers/install/the-testsigning-boot-configuration-option

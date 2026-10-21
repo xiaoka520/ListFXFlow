@@ -1,6 +1,30 @@
 param([ValidateSet('Import','Remove')][string]$Action='Import')
 $ErrorActionPreference='Stop'
 
+function Get-PtpCodeIntegrityOptions {
+    if(-not ('ListFXFlow.PtpTestCodeIntegrity' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace ListFXFlow {
+    public static class PtpTestCodeIntegrity {
+        [StructLayout(LayoutKind.Sequential)] private struct Info { public uint Length,Options; }
+        [DllImport("ntdll.dll")] private static extern int NtQuerySystemInformation(int kind,ref Info info,uint size,out uint returned);
+        public static uint Read() {
+            var info=new Info {Length=8};uint returned;
+            int status=NtQuerySystemInformation(103,ref info,8,out returned);
+            if(status<0 || returned!=8)throw new InvalidOperationException("Cannot read active Code Integrity state: 0x"+status.ToString("X8"));
+            return info.Options;
+        }
+    }
+}
+'@
+    }
+    return [ListFXFlow.PtpTestCodeIntegrity]::Read()
+}
+function Assert-PtpTestSigningEnabled([uint32]$Options) {
+    if(($Options -band 2) -eq 0) { throw 'Test-signed driver loading is not active in this Windows session. Follow Test-README.txt to configure test signing and restart before installing.' }
+}
 function Get-PtpTestCertificate([string]$Directory,[switch]$SkipPayload) {
     $meta=Get-Content -Raw -LiteralPath (Join-Path $Directory 'test-signing.json') | ConvertFrom-Json
     if($meta.Schema -ne 1 -or $meta.SigningMode -ne 'self-signed-test' -or -not $meta.RequiresTestSigning -or $meta.PrivateKeyIncluded -or

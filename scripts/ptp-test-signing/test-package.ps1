@@ -8,6 +8,12 @@ function Reject($script,$label) { $failed=$false;try { & $script | Out-Null } ca
 $cert=$null
 try {
     Copy-Item "$source/*" $temp
+    $options=Get-PtpCodeIntegrityOptions
+    Write-Host ('Read-only active Code Integrity flags: 0x'+$options.ToString('X'))
+    Reject {Assert-PtpTestSigningEnabled 1} 'normal signing mode'
+    Reject {Assert-PtpTestSigningEnabled 0x401} 'memory integrity without test signing'
+    Assert-PtpTestSigningEnabled 2
+    Assert-PtpTestSigningEnabled 0x403
     if(@(Get-ChildItem -LiteralPath $source -Recurse -Include '*.pfx','*.p12','*.pvk','*.key').Count) { throw 'Private key material must never be distributed.' }
     $cert=Get-PtpTestCertificate $temp
     if($cert.HasPrivateKey) { throw 'Public certificate unexpectedly has a private key.' }
