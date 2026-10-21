@@ -24,6 +24,9 @@ try {
     $target=Get-Content -Raw -LiteralPath (Join-Path $output 'target.json') | ConvertFrom-Json
     if($target.Installed -or -not $target.ObserverOnly -or -not $target.RequiresMicrosoftSigning) { throw 'Incorrect prepared-package state' }
     if((Get-FileHash (Join-Path $output 'ListFXFlowPtp.sys')).Hash -ne (Get-FileHash (Join-Path $package 'ListFXFlowPtp.sys')).Hash) { throw 'Driver bytes changed during preparation' }
+    $verifier=Join-Path $root '.build/driver-packages/Microsoft.Windows.WDK.x64.10.0.28000.2526/c/tools/10.0.28000.0/x64/infverif.exe'
+    & $verifier /w /v (Join-Path $output 'ListFXFlowPtp.inf')
+    if($LASTEXITCODE) { throw 'Device-specific INF validation failed' }
     Write-Diagnostic @('HID\HID_DEVICE_UP:000D_U:0005');Reject-Preparation 'generic HID class'
     Write-Diagnostic @('HID\VID_1234&PID_5678') 1 2;Reject-Preparation 'mouse collection'
     Write-Diagnostic @('HID\VID_1234%13%');Reject-Preparation 'INF substitution characters'

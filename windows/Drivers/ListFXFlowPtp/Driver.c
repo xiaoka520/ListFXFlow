@@ -53,7 +53,7 @@ VOID ReadComplete(WDFREQUEST request,WDFIOTARGET target,PWDF_REQUEST_COMPLETION_
         if(length>=params->IoStatus.Information) {
             WdfSpinLockAcquire(ctx->Lock);
             if(ctx->Ready && ctx->Reading)
-                (void)LfxRingPush(&ctx->Ring,buffer,(uint32_t)params->IoStatus.Information,(uint64_t)KeQueryPerformanceCounter(NULL).QuadPart);
+                (void)LfxRingPush(&ctx->Ring,buffer,(LFX_U32)params->IoStatus.Information,(LFX_U64)KeQueryPerformanceCounter(NULL).QuadPart);
             WdfSpinLockRelease(ctx->Lock);
         }
     }
@@ -116,7 +116,7 @@ VOID SideIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outLength,size_t inLengt
         if(capacity<sizeof(meta)) { status=STATUS_BUFFER_TOO_SMALL;break; }
         (void)KeQueryPerformanceCounter(&frequency);
         meta.Size=sizeof(meta);meta.Version=LFX_PTP_VERSION;meta.Flags=LFX_PTP_FLAG_OBSERVE_ONLY;
-        meta.ReportLimit=LFX_PTP_REPORT_LIMIT;meta.RingCapacity=LFX_PTP_RING_CAPACITY;meta.Frequency=(uint64_t)frequency.QuadPart;
+        meta.ReportLimit=LFX_PTP_REPORT_LIMIT;meta.RingCapacity=LFX_PTP_RING_CAPACITY;meta.Frequency=(LFX_U64)frequency.QuadPart;
         WdfSpinLockAcquire(ctx->Lock);
         if(ctx->Ready)meta.Flags|=LFX_PTP_FLAG_VALIDATED;
         meta.DescriptorLength=ctx->DescriptorLength;meta.InputReportLength=ctx->InputLength;
@@ -132,7 +132,7 @@ VOID SideIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outLength,size_t inLengt
     case LFX_PTP_REPORT_IOCTL:
         WdfSpinLockAcquire(ctx->Lock);
         if(capacity<LFX_PTP_REPORT_LIMIT+sizeof(LFX_PTP_REPORT_HEADER))status=STATUS_BUFFER_TOO_SMALL;
-        else { written=LfxRingPop(&ctx->Ring,buffer,(uint32_t)min(capacity,MAXULONG));if(!written)status=STATUS_NO_MORE_ENTRIES; }
+        else { written=LfxRingPop(&ctx->Ring,buffer,(LFX_U32)min(capacity,MAXULONG));if(!written)status=STATUS_NO_MORE_ENTRIES; }
         WdfSpinLockRelease(ctx->Lock);break;
     default:status=STATUS_INVALID_DEVICE_REQUEST;break;
     }

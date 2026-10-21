@@ -318,9 +318,9 @@ if(args.Contains("--interop")) {
             client.Send(new("relativePointer") {Dx=37.5,Dy=-9});
             client.Send(new("gameModeRequest") {Down=false});
             client.Send(new("touchpadControl") { Down=true });
-            client.Send(new("touchpad") { Phase="begin",GestureEpoch=42,Contacts=[new(1,.3,.5),new(2,.7,.5)] });
-            client.Send(new("touchpad") { Phase="change",GestureEpoch=42,Contacts=[new(1,.2,.5),new(2,.8,.5)] });
-            client.Send(new("touchpad") { Phase="end",GestureEpoch=42,Contacts=[] });
+            client.Send(new("touchpad") { Phase="begin",GestureEpoch=42,GestureTime=123.5,Contacts=[new(1,.3,.5),new(2,.7,.5)] });
+            client.Send(new("touchpad") { Phase="change",GestureEpoch=42,GestureTime=123.55,Contacts=[new(1,.2,.5),new(2,.8,.5)] });
+            client.Send(new("touchpad") { Phase="end",GestureEpoch=42,GestureTime=123.6,Contacts=[] });
             client.Send(new("touchpadFeedback") {GestureEpoch=42,Frames=3,Events=2,Phase="submitted",Backend="quartz"});
             client.Send(new("reset"));
         }
@@ -335,6 +335,7 @@ if(args.Contains("--interop")) {
         Check(receivedTouchpad.Select(m=>m.Phase).SequenceEqual(new[]{"begin","change","end"}) &&
               receivedTouchpad[0].Contacts![0]==new TouchpadContact(1,.3,.5) && receivedTouchpad[1].Contacts![1]==new TouchpadContact(2,.8,.5) && receivedTouchpad[2].Contacts!.Length==0 && receivedTouchpad.All(m=>m.GestureEpoch==42),
               "native touchpad phases, stable contact IDs and precise coordinates survive Swift/.NET encryption");
+        Check(receivedTouchpad.Select(m=>m.GestureTime).SequenceEqual(new double?[]{123.5,123.55,123.6}),"raw source timestamps survive Swift/.NET encrypted TCP without conversion to arrival time");
         Check(receivedFeedback is {GestureEpoch:42,Frames:3,Events:2,Phase:"submitted",Backend:"quartz"},"receiver backend and submitted-versus-received feedback survive Swift/.NET encrypted TCP");
         byte[] cap=await clipboardToken.Task.WaitAsync(deadline.Token);
         using(var rejected=new TcpClient()) {
