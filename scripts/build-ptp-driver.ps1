@@ -7,6 +7,11 @@ try {
     msbuild windows/Drivers/ListFXFlowPtp/ListFXFlowPtp.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off
     if ($LASTEXITCODE) { throw 'PTP observer driver build failed' }
     $out = Join-Path $root 'artifacts/PTP-Driver-Experimental'
+    # Keep repeat builds clean without discarding a previous developer package.
+    # In particular, never leave an old catalog alongside a rebuilt .sys/INF.
+    if(Test-Path -LiteralPath $out) {
+        Move-Item -LiteralPath $out -Destination (Join-Path $root ('.build/ptp-artifact-previous-'+[guid]::NewGuid()))
+    }
     New-Item -ItemType Directory -Force $out | Out-Null
     Copy-Item .build/ptp-driver/ListFXFlowPtp.sys $out
     Copy-Item windows/Drivers/ListFXFlowPtp/ListFXFlowPtp.inf.in $out
