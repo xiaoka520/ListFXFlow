@@ -37,7 +37,9 @@ internal sealed class TouchpadCaptureSession : IDisposable {
     private void RawFailed(long token,string message) {
         dispatcher.BeginInvoke(DispatcherPriority.Background,new Action(()=> {
             if(disposed || token!=generation)return;
-            rawCapture?.Dispose();rawCapture=null;rawStroke.Reset();batch.Reset();contacts([],null);warning(message);
+            // The host warning cancels the sender. A fabricated empty frame
+            // would commit an "end" before cancellation and rearm mid-stroke.
+            rawCapture?.Dispose();rawCapture=null;rawStroke.Reset();batch.Reset();warning(message);
         }));
     }
     private readonly ScrollDiagnostics scrollDiagnostics=new("scroll-worker");
