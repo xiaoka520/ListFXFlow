@@ -23,9 +23,13 @@ if (-not (Test-Path -LiteralPath $sys) -or -not (Test-Path -LiteralPath $templat
 if (Test-Path -LiteralPath $OutputDirectory) { throw 'Output directory already exists; choose a new folder' }
 New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
 Copy-Item -LiteralPath $sys -Destination $OutputDirectory
+foreach ($name in @('LICENSE','THIRD_PARTY_NOTICES.txt','README.md')) {
+    $notice=Join-Path $PackageDirectory $name
+    if(Test-Path -LiteralPath $notice) { Copy-Item -LiteralPath $notice -Destination $OutputDirectory }
+}
 $inf=(Get-Content -Raw -LiteralPath $template).Replace('@PTP_HARDWARE_ID@',$id)
 Set-Content -LiteralPath (Join-Path $OutputDirectory 'ListFXFlowPtp.inf') -Value $inf -Encoding ascii
-@{HardwareId=$id;ObserverOnly=$true;DriverHash=(Get-FileHash -LiteralPath $sys -Algorithm SHA256).Hash;Installed=$false;RequiresMicrosoftSigning=$true} |
+@{HardwareId=$id;ReportedInputReportLength=$device.InputReportLength;ObserverOnly=$true;DriverHash=(Get-FileHash -LiteralPath $sys -Algorithm SHA256).Hash;Installed=$false;RequiresMicrosoftSigning=$true} |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputDirectory 'target.json') -Encoding utf8
 Write-Host "Prepared for exact PTP hardware ID: $id"
 Write-Host "Files: $OutputDirectory"

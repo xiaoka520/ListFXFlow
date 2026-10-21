@@ -13,5 +13,11 @@ try {
     Copy-Item scripts/Prepare-PtpDriver.ps1 $out
     Copy-Item docs/PTP-DRIVER.md (Join-Path $out 'README.md')
     Copy-Item LICENSE,THIRD_PARTY_NOTICES.txt $out
+    # A model-level profile from device diagnostics, with no instance/serial data.
+    $profile=Join-Path $out 'Profiles/ASUF1209-Col02'
+    & "$PSScriptRoot/Prepare-PtpDriver.ps1" -DiagnosticsFile windows/Drivers/ListFXFlowPtp/Profiles/ASUF1209-Col02.json -PackageDirectory $out -OutputDirectory $profile
+    $verifier=Join-Path $root '.build/driver-packages/Microsoft.Windows.WDK.x64.10.0.28000.2526/c/tools/10.0.28000.0/x64/infverif.exe'
+    & $verifier /w /v (Join-Path $profile 'ListFXFlowPtp.inf')
+    if($LASTEXITCODE) { throw 'ASUF1209 collection-specific INF validation failed' }
     Write-Host 'Built unsigned read-only observer; no device was modified or driver installed.'
 } finally { Pop-Location }

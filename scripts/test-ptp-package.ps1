@@ -27,6 +27,14 @@ try {
     $verifier=Join-Path $root '.build/driver-packages/Microsoft.Windows.WDK.x64.10.0.28000.2526/c/tools/10.0.28000.0/x64/infverif.exe'
     & $verifier /w /v (Join-Path $output 'ListFXFlowPtp.inf')
     if($LASTEXITCODE) { throw 'Device-specific INF validation failed' }
+    $profile=Join-Path $package 'Profiles/ASUF1209-Col02'
+    $realTarget=Get-Content -Raw -LiteralPath (Join-Path $profile 'target.json') | ConvertFrom-Json
+    if($realTarget.HardwareId -cne 'HID\VEN_ASUF&DEV_1209&Col02' -or $realTarget.ReportedInputReportLength -ne 50 -or $realTarget.Installed) { throw 'Incorrect ASUF1209 profile' }
+    $realInf=Get-Content -Raw -LiteralPath (Join-Path $profile 'ListFXFlowPtp.inf')
+    if(-not $realInf.Contains('Observe,HID\VEN_ASUF&DEV_1209&Col02') -or $realInf.Contains('@PTP_HARDWARE_ID@') -or $realInf.Contains('Observe,HID_DEVICE')) { throw 'ASUF1209 INF is not scoped to the exact collection' }
+    foreach($notice in @('LICENSE','THIRD_PARTY_NOTICES.txt','README.md')) {
+        if(-not(Test-Path -LiteralPath (Join-Path $profile $notice))) { throw "Missing prepared-package notice: $notice" }
+    }
     Write-Diagnostic @('HID\HID_DEVICE_UP:000D_U:0005');Reject-Preparation 'generic HID class'
     Write-Diagnostic @('HID\VID_1234&PID_5678') 1 2;Reject-Preparation 'mouse collection'
     Write-Diagnostic @('HID\VID_1234%13%');Reject-Preparation 'INF substitution characters'

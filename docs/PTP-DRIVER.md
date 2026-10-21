@@ -48,6 +48,14 @@ WDK / SDK NuGet 固定为 10.0.28000.2526，KMDF 1.33，Desktop / x64。产物�
 
 准备工具只生成目标硬件 ID 的 INF 和哈希清单，不安装、不修改注册表、不重启设备。不接受 `HID_DEVICE` 通用类匹配，不对整个 HIDClass / Mouse 类添加过滤器。输出 INF / CAT 还需 WDK 工具验证与微软签名，才能在正常安全配置的 Windows 分发加载。
 
+### ASUF1209 / Col02 专用配置
+
+收到的 Windows 26300 诊断已确认 `HID\VEN_ASUF&DEV_1209&Col02` 是 Usage Page 13 / Usage 5 的 PTP collection，输入报告长度为 50 字节。`Observers: []` 表示尚未枚举到观察驱动的旁路接口；本次未请求采样，零帧不是触点读取失败的证据。
+
+仓库仅保存型号级硬件 ID、usage 和报告长度，不保存实例 ID、序列号或诊断时间。构建会在开发产物的 `Profiles/ASUF1209-Col02/` 生成精确匹配的 INF、原驱动、许可和 `target.json`，并执行 `InfVerif /w`。50 字节不能代替实际 preparsed capabilities，也不能据此确定坐标偏移或证明触点可读。
+
+该配置包仍是未签名开发产物，没有生成签名 CAT，不能当作可直接安装的发行包。当前没有可用的 Microsoft Hardware 签名账号及关联证书，正常安全配置下的部署因此尚未完成；普通应用继续使用 SDK。[微软内核驱动签名策略](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/kernel-mode-code-signing-policy--windows-vista-and-later-)及[签名账号与证书要求](https://learn.microsoft.com/en-us/windows-hardware/drivers/dashboard/code-signing-reqs)说明了提交与加载条件。
+
 ## 尚需实机验证
 
 当前 Mac 无法加载 Windows 内核驱动。Windows CI 构建、缓冲区测试和模拟帧测试不能证明这台笔记本的过滤器附着层级、Read 完成回调、实际 HID report 布局、拔插 / 睡眠 / 恢复、卸载与原输入放行可靠。拿到设备诊断、有效签名和测试环境后，先完成这些验证，再开发内核输入接管；当前包没有提供内核屏蔽开关。
