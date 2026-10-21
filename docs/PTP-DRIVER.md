@@ -40,7 +40,7 @@ PTP HID collection → 原有系统 Read 请求完成 → 驱动环形缓冲中�
 ./scripts/build-ptp-driver.ps1
 ```
 
-WDK / SDK NuGet 固定为 10.0.28000.2526，KMDF 1.33，Desktop / x64。产物在 `artifacts/PTP-Driver-Experimental/`，是 **未签名开发产物**。CI 不安装驱动，构建二进制、验证公共 ABI，并对使用测试硬件 ID 生成的 INF 执行 `InfVerif /w`。此 NuGet 包不包含其旧构建目标调用的 ApiValidator，当前没有宣称通过 Universal API layering 校验；完整签名、HLK 和运行时 Driver Verifier 尚待进行。
+WDK / SDK NuGet 固定为 10.0.28000.2526，KMDF 1.33，Desktop / x64。产物在 `artifacts/PTP-Driver-Experimental/`，是 **未签名开发产物**。CI 不安装驱动，构建二进制、验证公共 ABI，并对使用测试硬件 ID 生成的 INF 执行 `InfVerif /w`。旧构建目标默认查找 x86 ApiValidator，而此包提供 x64 / ARM64 版本；当前 Desktop 目标没有宣称通过 Universal API layering 校验，HLK 和运行时 Driver Verifier 尚待进行。
 
 ```powershell
 ./Prepare-PtpDriver.ps1 -DiagnosticsFile '实际路径\touchpad-hid.json'
@@ -54,7 +54,17 @@ WDK / SDK NuGet 固定为 10.0.28000.2526，KMDF 1.33，Desktop / x64。产物�
 
 仓库仅保存型号级硬件 ID、usage 和报告长度，不保存实例 ID、序列号或诊断时间。构建会在开发产物的 `Profiles/ASUF1209-Col02/` 生成精确匹配的 INF、原驱动、许可和 `target.json`，并执行 `InfVerif /w`。50 字节不能代替实际 preparsed capabilities，也不能据此确定坐标偏移或证明触点可读。
 
-该配置包仍是未签名开发产物，没有生成签名 CAT，不能当作可直接安装的发行包。当前没有可用的 Microsoft Hardware 签名账号及关联证书，正常安全配置下的部署因此尚未完成；普通应用继续使用 SDK。[微软内核驱动签名策略](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/kernel-mode-code-signing-policy--windows-vista-and-later-)及[签名账号与证书要求](https://learn.microsoft.com/en-us/windows-hardware/drivers/dashboard/code-signing-reqs)说明了提交与加载条件。
+Unsigned 配置包是未签名开发产物，没有签名 CAT，不能当作可直接安装的发行包。当前没有可用的 Microsoft Hardware 签名账号及关联证书，默认安全配置下的部署因此尚未完成；没有加载观察驱动时，普通应用继续使用 SDK。另行构建的 TestSigned 包用于手动配置的测试签名环境，见下节。[微软内核驱动签名策略](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/kernel-mode-code-signing-policy--windows-vista-and-later-)及[签名账号与证书要求](https://learn.microsoft.com/en-us/windows-hardware/drivers/dashboard/code-signing-reqs)说明了正式提交与加载条件。
+
+### TestSigned 专用测试包
+
+Windows 构建端先执行 `scripts/build-ptp-driver.ps1`，再执行 `scripts/sign-ptp-test-package.ps1`。输出 `artifacts/PTP-Driver-TestSigned/ASUF1209-Col02/`。过程创建约 90 天有效、仅代码签名 EKU 的自签 RSA 证书：先以 SHA-256 为 SYS 签名，再用 Inf2Cat 生成 CAT，再为 CAT 签名。SignTool 校验两份签名及 CAT 对 SYS / INF 的成员绑定。私钥不可导出，不进 ZIP / 缓存，构建结束从签名机移除。
+
+包里仅包含公开 CER，`test-signing.json` 记录证书指纹、期限、文件 SHA-256 和源码修订。`target.json` 的 DriverHash 对应签名后的 SYS。`RequiresMicrosoftSigning` 仍表示默认安全配置的正式分发条件；`SigningMode=self-signed-test` 和 `RequiresTestSigning=true` 明确这个包仅供测试配置使用。
+
+用户完整解压到 Windows 本机目录，接好外接鼠标、保存设备加密恢复密钥，再以管理员身份运行 `Import-TestCertificate.cmd`，仅把包内指纹匹配的证书导入本机 Root / TrustedPublisher。随后由用户手动配置 TESTSIGNING 并重启，再运行 `Try-Install.cmd`。证书导入、启动配置、驱动安装是三个独立动作；脚本不修改 BCD / Secure Boot / 内存完整性，不自动重启。具体顺序和十秒采样命令在包内 `Test-README.txt`。
+
+清理时先运行 `Rollback.cmd` 卸载本项目扩展包，再运行 `Remove-TestCertificate.cmd`；清理脚本只移除本包指纹，并在仍检测到本项目 PTP 驱动包时拒绝先移除信任。之后由用户关闭测试模式、重启并恢复其修改过的固件设置。CI 在隔离 Windows 中验证证书导入、清理和篡改拒绝，不执行驱动安装或改变启动配置。实际设备的加载、报告读取和稳定性仍需实机验证。[微软测试签名说明](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/the-testsigning-boot-configuration-option)
 
 ### 手动尝试安装与回滚
 

@@ -28,6 +28,7 @@ jobs:
         shell: powershell
         run: ./scripts/ptp-trial/test-validation.ps1
       - name: Produce test-signed ASUF1209 package (no installation)
+        timeout-minutes: 8
         shell: powershell
         run: ./scripts/sign-ptp-test-package.ps1
       - name: Verify public certificate and explicit trust cleanup (no driver installation)

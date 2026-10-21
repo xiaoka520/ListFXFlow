@@ -3,6 +3,21 @@ param(
     [string]$OutputDirectory
 )
 $ErrorActionPreference='Stop'
+function Invoke-PtpSigningTool([string]$Tool,[string[]]$Arguments) {
+    Write-Host ('Running '+[IO.Path]::GetFileName($Tool)+' '+($Arguments -join ' '))
+    $info=New-Object Diagnostics.ProcessStartInfo
+    $info.FileName=$Tool
+    $info.Arguments=(@($Arguments | ForEach-Object {'"'+(($_ -replace '(\\*)"','$1$1\"') -replace '(\\+)$','$1$1')+'"'}) -join ' ')
+    $info.UseShellExecute=$false;$info.CreateNoWindow=$true;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true
+    $process=New-Object Diagnostics.Process;$process.StartInfo=$info
+    try {
+        if(-not $process.Start()) { throw 'Could not start signing tool' }
+        $stdout=$process.StandardOutput.ReadToEndAsync();$stderr=$process.StandardError.ReadToEndAsync()
+        if(-not $process.WaitForExit(120000)) { $process.Kill();$process.WaitForExit(5000) | Out-Null;throw ('Tool timed out: '+$Tool) }
+        Write-Host $stdout.GetAwaiter().GetResult();Write-Host $stderr.GetAwaiter().GetResult()
+        if($process.ExitCode -ne 0) { throw ('Signing tool exit code '+$process.ExitCode+': '+$Tool) }
+    } finally { $process.Dispose() }
+}
 $root=Split-Path -Parent $PSScriptRoot
 if(-not $InputDirectory) { $InputDirectory=Join-Path $root 'artifacts/PTP-Driver-Experimental/Profiles/ASUF1209-Col02' }
 if(-not $OutputDirectory) { $OutputDirectory=Join-Path $root 'artifacts/PTP-Driver-TestSigned/ASUF1209-Col02' }
@@ -26,24 +41,22 @@ $cert=$null
 try {
     # The non-exportable private key exists only on this signing machine.
     $subject='CN=ListFXFlow PTP Test Only '+[guid]::NewGuid().ToString('N')
+    Write-Host 'Creating short-lived non-exportable signing certificate...'
     $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject $subject -CertStoreLocation Cert:\CurrentUser\My `
         -KeyAlgorithm RSA -KeyLength 3072 -HashAlgorithm SHA256 -KeyExportPolicy NonExportable `
         -NotBefore (Get-Date).AddDays(-1) -NotAfter (Get-Date).AddDays(90)
-    & $signTool sign /v /s My /sha1 $cert.Thumbprint /fd SHA256 /ph $sys
-    if($LASTEXITCODE) { throw 'SYS test signing failed' }
-    & $inf2cat ("/driver:"+$OutputDirectory) /os:10_GE_X64,10_25H2_X64 /uselocaltime /verbose
-    if($LASTEXITCODE -or -not(Test-Path -LiteralPath $cat)) { throw 'INF catalog generation failed' }
-    & $signTool sign /v /s My /sha1 $cert.Thumbprint /fd SHA256 $cat
-    if($LASTEXITCODE) { throw 'CAT test signing failed' }
+    Write-Host ('Created test certificate '+$cert.Thumbprint)
+    Invoke-PtpSigningTool $signTool @('sign','/v','/s','My','/sha1',$cert.Thumbprint,'/fd','SHA256','/ph',$sys)
+    Invoke-PtpSigningTool $inf2cat @(("/driver:"+$OutputDirectory),'/os:10_GE_X64,10_25H2_X64','/uselocaltime','/verbose')
+    if(-not(Test-Path -LiteralPath $cat)) { throw 'INF catalog generation produced no CAT' }
+    Invoke-PtpSigningTool $signTool @('sign','/v','/s','My','/sha1',$cert.Thumbprint,'/fd','SHA256',$cat)
     Export-Certificate -Cert $cert -FilePath $cer | Out-Null
     foreach($store in @('Root','TrustedPublisher')) { Import-Certificate -FilePath $cer -CertStoreLocation ("Cert:\CurrentUser\"+$store) | Out-Null }
     foreach($file in @($sys,$cat)) {
-        & $signTool verify /v /pa $file
-        if($LASTEXITCODE) { throw 'Test signature validation failed' }
+        Invoke-PtpSigningTool $signTool @('verify','/v','/pa',$file)
     }
     foreach($file in @($sys,$inf)) {
-        & $signTool verify /v /pa /c $cat $file
-        if($LASTEXITCODE) { throw 'Signed catalog member validation failed' }
+        Invoke-PtpSigningTool $signTool @('verify','/v','/pa','/c',$cat,$file)
     }
     $targetPath=Join-Path $OutputDirectory 'target.json'
     $target=Get-Content -Raw -LiteralPath $targetPath | ConvertFrom-Json
