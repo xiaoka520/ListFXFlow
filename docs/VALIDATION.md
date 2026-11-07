@@ -1,13 +1,5 @@
 # 验证记录 · 0.1.0–0.2.1
 
-## Mac 0.2.3 build 44 — 移除菜单栏悬停状态提示
-
-日期：2026-11-07，Asia/Shanghai。
-
-- 鼠标旁的“ListFXFlow · 自动共享已开启，等待雷雳网桥…”来自 StatusItemController 给菜单栏按钮设置的原生 toolTip。初始化明确置空，状态订阅不再写入；菜单和主界面的状态文字保留。
-- Mac Release 构建、strict/deep 签名、DMG 校验、ZIP CRC、build 44 与包内执行文件一致性检查通过。未新增仅复述属性赋值的测试，也未声称实机复现了系统 tooltip 停留过程。
-- VERSION 保持 0.2.3，BUILD 增为 44。新版 Mac App、DMG 和 ZIP 放在 artifacts，旧 Mac build 42 成品移入废纸篓。未替换或重启正在运行的 /Applications 应用；Windows 程序未改动。
-
 日期：2026-10-17，Asia/Shanghai。
 
 ## 已完成
@@ -460,3 +452,11 @@ dotnet publish windows/ListFXFlow/ListFXFlow.csproj -c Release -r win-x64 \
 - 专用包新增 Try-Install.cmd、Rollback.cmd 和说明。用户主动运行时按当前 Windows 策略执行精确 INF 的 /add-driver /install，记录 PnPUtil 原始输出、退出码与设备栈；没有因缺少签名提前禁止尝试。PnPUtil 接受操作与实际加载、触点读取保持分开判断。普通双端应用和 build 42 输入代码未改动。
 - 回滚要求明确的 oem数字.inf，并核对 Windows INF 中本项目的 ExtensionId、服务和本包硬件 ID，仅执行 /delete-driver /uninstall。拒绝系统 INF、路径穿越、附加参数和其他服务；本地载荷损坏不阻碍核实已安装包后回滚。
 - [Windows CI 39566966622](https://github.com/xiaoka520/ListFXFlow/actions/runs/39566966622) 通过驱动构建、INF 验证、包准备与 Windows PowerShell 校验测试。测试没有执行安装命令，不能证明实体触控板上的安装或加载结果。脚本不调整启动安全配置、不自动重启；未知过滤器的安装测试需备好外接鼠标。
+
+## Mac 0.2.3 build 44 — 移除菜单栏悬停状态提示
+
+日期：2026-11-07，Asia/Shanghai。
+
+- 鼠标旁的“ListFXFlow · 自动共享已开启，等待雷雳网桥…”来自 StatusItemController 给菜单栏按钮设置的原生 toolTip。初始化明确置空，状态订阅不再写入；菜单和主界面的状态文字保留。
+- Mac Release 构建、strict/deep 签名、DMG 校验、ZIP CRC、build 44 与包内执行文件一致性检查通过。未新增仅复述属性赋值的测试，也未声称实机复现了系统 tooltip 停留过程。
+- VERSION 保持 0.2.3，BUILD 增为 44。新版 Mac App、DMG 和 ZIP 放在 artifacts，旧 Mac build 42 成品移入废纸篓。未替换或重启正在运行的 /Applications 应用；Windows 程序未改动。
