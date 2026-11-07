@@ -1,5 +1,13 @@
 # 验证记录 · 0.1.0–0.2.1
 
+## Mac 0.2.3 build 44 — 移除菜单栏悬停状态提示
+
+日期：2026-11-07，Asia/Shanghai。
+
+- 鼠标旁的“ListFXFlow · 自动共享已开启，等待雷雳网桥…”来自 StatusItemController 给菜单栏按钮设置的原生 toolTip。初始化明确置空，状态订阅不再写入；菜单和主界面的状态文字保留。
+- Mac Release 构建、strict/deep 签名、DMG 校验、ZIP CRC、build 44 与包内执行文件一致性检查通过。未新增仅复述属性赋值的测试，也未声称实机复现了系统 tooltip 停留过程。
+- VERSION 保持 0.2.3，BUILD 增为 44。新版 Mac App、DMG 和 ZIP 放在 artifacts，旧 Mac build 42 成品移入废纸篓。未替换或重启正在运行的 /Applications 应用；Windows 程序未改动。
+
 日期：2026-10-17，Asia/Shanghai。
 
 ## 已完成

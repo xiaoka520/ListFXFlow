@@ -13,6 +13,7 @@ final class StatusItemController: NSObject {
         self.model=model; self.show=show; super.init()
         let image=NSImage(systemSymbolName: "cursorarrow.motionlines",accessibilityDescription: "ListFXFlow")
         image?.isTemplate=true; item.button?.image=image
+        item.button?.toolTip=nil
         let menu=NSMenu();menu.autoenablesItems=false; stateItem.isEnabled=false; menu.addItem(stateItem); menu.addItem(.separator())
         let open=NSMenuItem(title: "打开主界面…",action: #selector(openMain),keyEquivalent: "o"); open.target=self; menu.addItem(open)
         let permissions=NSMenuItem(title: "权限设置…",action: #selector(openPermissions),keyEquivalent: ""); permissions.target=self; menu.addItem(permissions)
@@ -21,7 +22,7 @@ final class StatusItemController: NSObject {
         let quit=NSMenuItem(title: "退出 ListFXFlow",action: #selector(quit),keyEquivalent: "q"); quit.target=self; menu.addItem(quit)
         item.menu=menu
         Publishers.CombineLatest3(model.$status,model.$listening,model.$autoStarting).receive(on: RunLoop.main).sink { [weak self] status,listening,starting in
-            self?.stateItem.title=status; self?.item.button?.toolTip="ListFXFlow · "+status
+            self?.stateItem.title=status
             self?.toggleItem.title=listening || starting ? "停止共享" : "启用共享"
         }.store(in: &observers)
         Publishers.CombineLatest4(model.$gameProtection,model.$gameProtectionAvailable,model.$active,model.$connected)
