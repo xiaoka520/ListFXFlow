@@ -40,13 +40,13 @@ All field names use camelCase, with absent optional fields omitted or null.
 | `pointer` | active, x, y | Active device (`mac`/`windows`) and normalized coordinates 0…1 within its primary screen. All physical movement is synchronized, including movement within the active local screen. |
 | `key` | key, down | USB HID usage from canonical keymap and press/release state. No text translation or input method synchronization. |
 | `button` | button, down | 0 left, 1 right, 2 middle, 3/4 extra buttons. |
-| `caps` | down | Desired Caps Lock state. Only sent after the peer advertises `caps-v1` in `display.features`. |
+| `caps` | down | Legacy Caps Lock state. Windows still accepts it; current Mac receivers ignore it. |
 | `scroll` | dx, dy | Pixel-like scroll units. Positive dy is upward, positive dx is leftward. Windows wheel notch (120) maps to 40 units. |
 | `clipboardReady` | nonce | Session-only 32-byte clipboard secret (hex), sent only after the peer advertises `clipboard-v1` in `display.features`. |
 | `ping` | — | Heartbeat, once per second. |
 | `reset` | — | Stop and release ownership. |
 
-Caps Lock is a system toggle rather than a held key. Each side lets the physical Caps event reach its own OS, then exchanges the resulting state through `caps` so both desktops and keyboard LEDs agree. The Mac sends its current state when it receives the Windows `display` capabilities. Peers that do not advertise `caps-v1` keep Caps local only.
+Starting in build 45, Mac receivers no longer advertise `caps-v1` or apply a peer's lock state. Windows HID usage 57 follows focus and crosses to Mac as a `key` press/release pair, without repeat. On the Mac desktop, the receiver submits those transitions via the HID manager without setting a lock bit. The login agent uses its existing session keyboard path. Mac can still report its current state on connection and send local Caps changes while Windows owns input if Windows advertises `caps-v1`. An older Windows app does not send the new physical Caps pair; update both apps to use the Windows key on Mac, and reinstall the optional login component if used.
 
 TCP preserves event order. On Windows, a dedicated input thread consumes a bounded queue; only adjacent pointer samples for the same active device can be coalesced. Buttons, keys, layout messages and focus transitions remain ordering barriers. Queue overflow stops sharing rather than silently dropping releases. No automatic reconnect or input resumption occurs after a disconnect. Mac starts listening automatically on application launch, waiting for permissions and a bridge address if necessary; a manual stop cancels this pending launch start. A three-second receive heartbeat timeout releases injected held keys/buttons and returns each machine to local control. Injected events are marked and excluded from retransmission.
 

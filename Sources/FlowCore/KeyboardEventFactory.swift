@@ -9,7 +9,7 @@ public enum KeyboardEventFactory {
         return event
     }
     public static func applyingModifiers(_ modifiers:CGEventFlags,to generated:CGEventFlags)->CGEventFlags {
-        let managed:CGEventFlags=[.maskAlphaShift,.maskShift,.maskControl,.maskAlternate,.maskCommand]
+        let managed:CGEventFlags=[.maskShift,.maskControl,.maskAlternate,.maskCommand]
         return generated.subtracting(managed).union(modifiers.intersection(managed))
     }
 }

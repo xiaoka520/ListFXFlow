@@ -460,3 +460,9 @@ dotnet publish windows/ListFXFlow/ListFXFlow.csproj -c Release -r win-x64 \
 - 鼠标旁的“ListFXFlow · 自动共享已开启，等待雷雳网桥…”来自 StatusItemController 给菜单栏按钮设置的原生 toolTip。初始化明确置空，状态订阅不再写入；菜单和主界面的状态文字保留。
 - Mac Release 构建、strict/deep 签名、DMG 校验、ZIP CRC、build 44 与包内执行文件一致性检查通过。未新增仅复述属性赋值的测试，也未声称实机复现了系统 tooltip 停留过程。
 - VERSION 保持 0.2.3，BUILD 增为 44。新版 Mac App、DMG 和 ZIP 放在 artifacts，旧 Mac build 42 成品移入废纸篓。未替换或重启正在运行的 /Applications 应用；Windows 程序未改动。
+
+## 0.2.3 build 45 — Windows Caps 按键交给 macOS
+
+- Windows 控制 Mac 时发送 HID 57 的按下／抬起并过滤重复按下；Windows 本地按 Caps 不再向 Mac 发送锁定状态。Mac 桌面和登录代理都不再声明接收 caps-v1 或应用旧 caps 消息；Mac → Windows 的状态通道保留。
+- Mac 桌面通过 HID manager 发送 Caps 按键，不调用修改锁定状态的 API，不主动切换输入源。普通键沿用本机系统标志；修饰键事件保留当前的 Mac 大写锁定位。登录代理沿用会话键盘投递。
+- Swift 70 项测试、.NET 核心 331 项检查、Swift／.NET loopback 互通 354 项检查通过；新增互通检查验证 Caps 按下及抬起的顺序。双端 build 45 安装包、Mac 签名与 DMG、ZIP 内容及 Windows 内嵌版本和载荷校验通过。系统输入法和键位设置的实际响应仍需 Windows 键盘 → Mac 实机验证。本次没有替换或重启已安装应用。

@@ -55,14 +55,11 @@ int32_t FlowSessionPostMouse(CGEventRef event,uint8_t *buttons) {
     return result;
 }
 
-FlowHIDKeyEvent FlowHIDMakeCapsNotification(bool down) {
+FlowHIDKeyEvent FlowHIDMakePhysicalCaps(bool down) {
     FlowHIDKeyEvent event = {0};
-    // Caps also has a system-defined notification. A flagsChanged event only
-    // describes modifier state; it is not the complete physical Caps sequence.
-    event.type = NX_SYSDEFINED;
-    event.data.compound.subType = NX_SUBTYPE_AUX_CONTROL_BUTTONS;
-    event.data.compound.misc.L[0] = (NX_KEYTYPE_CAPS_LOCK << 16) |
-                                  ((down ? NX_KEYDOWN : NX_KEYUP) << 8);
+    event.type = down ? NX_KEYDOWN : NX_KEYUP;
+    event.data.key.keyCode = 57;
+    event.options = kIOHIDPostHIDManagerEvent;
     return event;
 }
 
@@ -98,8 +95,4 @@ bool FlowHIDPostKey(uint32_t connection, FlowHIDKeyEvent event) {
                                         kNXEventDataVersion, event.flags, event.options);
 #pragma clang diagnostic pop
     return result == KERN_SUCCESS;
-}
-
-bool FlowHIDSetCaps(uint32_t connection, bool enabled) {
-    return connection && IOHIDSetModifierLockState(connection, kIOHIDCapsLockState, enabled) == KERN_SUCCESS;
 }

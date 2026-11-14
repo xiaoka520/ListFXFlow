@@ -166,8 +166,8 @@ final class PreLoginService:NSObject,NSApplicationDelegate {
         switch message.type {
         case "display":
             topology.windowsAspect=message.width!/message.height!;input.router.updateTopology(topology)
-            input.peerSupportsCaps=message.features?.contains("caps-v1")==true
-            if input.peerSupportsCaps { input.sendCapsState() }
+            input.windowsAcceptsCapsState=message.features?.contains("caps-v1")==true
+            input.sendCapsState()
             announceDisplay()
         case "layout":
             topology.side=Side(rawValue:message.side!)!;topology.offset=message.offset!;input.router.updateTopology(topology)
@@ -178,7 +178,7 @@ final class PreLoginService:NSObject,NSApplicationDelegate {
     }
     private func announceDisplay() {
         guard let bounds=input?.bounds,(320...32768).contains(bounds.width),(200...32768).contains(bounds.height) else{return}
-        var message=Message("display");message.width=bounds.width;message.height=bounds.height;message.features=["caps-v1"];server?.send(message)
+        var message=Message("display");message.width=bounds.width;message.height=bounds.height;message.features=[];server?.send(message)
         var layout=Message("layout");layout.side=topology.side.rawValue;layout.offset=topology.offset;server?.send(layout)
     }
     private func suspend() {

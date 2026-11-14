@@ -3,5 +3,5 @@
 public enum TouchpadAvailability {
     public static let forwardingEnabled=false
     public static let receivesWindowsGestures=true
-    public static let displayFeatures=["clipboard-v1","caps-v1","game-mode-v1","touchpad-v1","touchpad-quartz-receive-v1","touchpad-feedback-v1"]
+    public static let displayFeatures=["clipboard-v1","game-mode-v1","touchpad-v1","touchpad-quartz-receive-v1","touchpad-feedback-v1"]
 }

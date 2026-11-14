@@ -17,7 +17,8 @@ final class InputEngine {
     var send: ((Message) -> Void)?
     var emergency: (() -> Void)?
     var onFocus: ((String) -> Void)?
-    var peerSupportsCaps = false
+    var windowsAcceptsCapsState = false
+    private var lastSentCapsState:Bool?
     var peerSupportsGameMode=false
     var onGameMode:((Bool,String)->Void)?
     private var gameShortcut=GameShortcut()
@@ -71,14 +72,14 @@ final class InputEngine {
             if let activity { ProcessInfo.processInfo.endActivity(activity); self.activity = nil }
             reset()
         } else {
+            lastSentCapsState=nil
             if activity == nil { activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated,.idleSystemSleepDisabled,.idleDisplaySleepDisabled,.latencyCritical],reason: "雷雳键鼠共享 · 无人值守") }
             if loginWindow {
-                physicalKeys=[];physicalButtons=[];capsState=false
+                physicalKeys=[];physicalButtons=[]
             } else {
             physicalKeys = Set(KeyMap.entries.filter { CGEventSource.keyState(.hidSystemState, key: CGKeyCode($0.mac)) }.map(\.hid))
             physicalKeys.remove(57) // Caps Lock is a toggle, not a held key.
             physicalButtons = Set((0...4).filter { CGEventSource.buttonState(.hidSystemState, button: CGMouseButton(rawValue: UInt32($0))!) })
-            capsState = CGEventSource.flagsState(.hidSystemState).contains(.maskAlphaShift)
             }
         }
     } }
@@ -97,7 +98,7 @@ final class InputEngine {
     private var source: CFRunLoopSource?
     private let cursorCapture = CursorCapture()
     private let eventSource:CGEventSource?
-    // Reuse the keyboard source across lock and ordinary key events. Pointer
+    // Reuse the keyboard source across key events. Pointer
     // injection keeps its separate source and cannot mutate this keyboard state.
     private let keyboardSource:CGEventSource?
     init(loginWindow:Bool=false) {
@@ -108,7 +109,6 @@ final class InputEngine {
             eventSource=source;keyboardSource=CGEventSource(stateID:.combinedSessionState)
         }
     }
-    private var capsState = false
     private var hidConnection: UInt32 = 0
     private var keyboardEcho = KeyboardEcho()
     private var physicalKeys = Set<Int>()
@@ -189,16 +189,13 @@ final class InputEngine {
             if action.toggle { toggleGameProtection() }
             if action.consume { return nil }
         }
-        // Caps Lock is a system toggle, not a held key. Let the local OS apply the
-        // physical event and publish the resulting state so both desktops match.
+        // macOS reports the result of its own Caps processing here. Preserve
+        // legacy state/LED feedback to Windows, never apply that state on Mac.
         if type == .flagsChanged, code == 57 {
-            let state = event.flags.contains(.maskAlphaShift)
-            if state != capsState {
-                capsState = state
-                if peerSupportsCaps { var m = Message("caps"); m.down = state; send?(m) }
-            }
+            if router.active == "windows" { sendCapsState(event.flags.contains(.maskAlphaShift)) }
             return Unmanaged.passUnretained(event)
         }
+        if code == 57 && (type == .keyDown || type == .keyUp) { return Unmanaged.passUnretained(event) }
         let oldActive = router.active
         let remote = oldActive != "mac"
         switch type {
@@ -416,14 +413,6 @@ final class InputEngine {
             if let feedback=touchpadReceiver.receive(message),peerSupportsTouchpadFeedback { send?(feedback) }
         case "touchpadFeedback" where touchpadAllowed && peerSupportsTouchpadFeedback && router.active != "mac" && message.gestureEpoch==touchpadEpoch:
             onTouchpadActivity?("远端已收 \(message.frames ?? 0) 帧 / 已提交 \(message.events ?? 0) 个事件")
-        case "caps":
-            if let state = message.down {
-                if capsState != state {
-                    flushInbound(includeScroll: false)
-                    capsState = state
-                    setCaps(state)
-                }
-            }
         case "reset": reset()
         default: break
         }
@@ -445,26 +434,19 @@ final class InputEngine {
         }
         onFocus?(router.active)
     }
-    func sendCapsState() {
-        guard enabled else { return }
-        var message = Message("caps"); message.down = capsState
-        send?(message)
-    }
-    private func setCaps(_ enabled: Bool) {
-        if loginWindow { postKeyboard(code:57,down:enabled,modifier:true);return }
-        // Deskflow posts Caps as NX_FLAGSCHANGED, never as a key click or a
-        // system-defined notification. A flagsChanged event updates the modifier
-        // state without invoking the Caps-to-English input-source shortcut.
-        if hidConnection == 0 { hidConnection = FlowHIDOpen() }
-        _ = FlowHIDSetCaps(hidConnection, enabled)
-        postKeyboard(code: 57, down: enabled, modifier: true)
+    func sendCapsState(_ state:Bool?=nil) {
+        guard enabled,windowsAcceptsCapsState else{return}
+        let current=state ?? (!loginWindow && CGEventSource.flagsState(.hidSystemState).contains(.maskAlphaShift))
+        if state != nil && current == lastSentCapsState { return }
+        lastSentCapsState=current
+        var message=Message("caps");message.down=current;send?(message)
     }
     private func postKeyboard(code: Int, down: Bool, modifier: Bool, repeated: Bool = false) {
         guard !injectionUnavailable else{return}
         let flags = modifierFlags
         if loginWindow {
             guard CGPreflightPostEventAccess(),let event=CGEvent(keyboardEventSource:nil,virtualKey:UInt16(code),keyDown:down) else { failPosting();return }
-            event.flags=flags
+            event.flags=KeyboardEventFactory.applyingModifiers(flags,to:event.flags)
             event.setIntegerValueField(.keyboardEventAutorepeat,value:repeated ? 1:0)
             if modifier { event.type = .flagsChanged }
             event.setIntegerValueField(.eventSourceUserData,value:Self.marker)
@@ -475,10 +457,15 @@ final class InputEngine {
         // global flags; ordinary keys are NX_KEYDOWN/NX_KEYUP with flags=0 and
         // options=0, so the driver and the active IME translate them normally.
         if hidConnection == 0 { hidConnection = FlowHIDOpen() }
-        let native=FlowHIDMakeKey(UInt16(code),down,modifier,repeated,UInt32(truncatingIfNeeded:flags.rawValue))
+        // HID Caps down/up lets the system decide what the key does. For other
+        // modifier transitions, preserve the live Mac lock bit in global flags.
+        let nativeFlags = modifier ? flags.union(CGEventSource.flagsState(.hidSystemState).intersection(.maskAlphaShift)):flags
+        let native=code == 57 ? FlowHIDMakePhysicalCaps(down):
+            FlowHIDMakeKey(UInt16(code),down,modifier,repeated,UInt32(truncatingIfNeeded:nativeFlags.rawValue))
         if FlowHIDPostKey(hidConnection, native) {
+            if code == 57 { return } // The tap handles Caps without routing it back as a key.
             let type: CGEventType = modifier ? .flagsChanged : (down ? .keyDown : .keyUp)
-            let echoFlags: CGEventFlags = modifier ? flags : []
+            let echoFlags: CGEventFlags = modifier ? nativeFlags : []
             keyboardEcho.expect(code: code, type: type.rawValue, flags: echoFlags.rawValue, repeated: repeated,
                                 now: ProcessInfo.processInfo.systemUptime)
             return
@@ -529,15 +516,14 @@ final class InputEngine {
         post(event)
     }
     private func injectKey(_ hid: Int, down: Bool) {
-        let repeated = down && injectedKeys.contains(hid)
+        let held=injectedKeys.contains(hid)
+        if hid == 57 && down == held { return }
+        let repeated = down && held
         if down { injectedKeys.insert(hid) } else { injectedKeys.remove(hid) }
         keyEvent(hid, down: down, repeated: repeated)
     }
     private var modifierFlags: CGEventFlags {
         var flags: CGEventFlags = []
-        // Injected key events must carry the shared Caps state; otherwise text goes
-        // through lowercase even though the system/LED was switched on.
-        if capsState { flags.insert(.maskAlphaShift) }
         for key in injectedKeys {
             if [224,228].contains(key) { flags.insert(.maskControl) }
             if [225,229].contains(key) { flags.insert(.maskShift) }
@@ -573,6 +559,7 @@ final class InputEngine {
         injectedButtons.removeAll()
     }
     func reset() {
+        windowsAcceptsCapsState=false;lastSentCapsState=nil
         peerSupportsGameMode=false;gameShortcut=GameShortcut();onGameMode?(false,"off")
         cancelTouchpad();peerTouchpadEnabled=false;peerSupportsTouchpad=false;peerReceivesTouchpad=false;peerSupportsTouchpadFeedback=false
         stopFrameTimer(); clearFrameInput()

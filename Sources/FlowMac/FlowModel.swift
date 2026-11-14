@@ -286,7 +286,7 @@ final class FlowModel: ObservableObject {
         else if !input.peerTouchpadEnabled { touchpadStatus="等待 Windows 开启多指手势转发" }
         else { touchpadStatus=touchpadActivity ?? "已就绪 · 指针在 Mac 时接收 Windows 三指 / 四指滑动" }
     }
-    private func announceDisplay() { let r = input.bounds;guard r.width>1,r.height>1 else{return};var m = Message("display"); m.width = r.width; m.height = r.height; m.features = loginWindow ? ["caps-v1"] : TouchpadAvailability.displayFeatures; server.send(m) }
+    private func announceDisplay() { let r = input.bounds;guard r.width>1,r.height>1 else{return};var m = Message("display"); m.width = r.width; m.height = r.height; m.features = loginWindow ? [] : TouchpadAvailability.displayFeatures; server.send(m) }
     private func publishLocalPointer() {
         let r = input.bounds, p = CGEvent(source: nil)?.location ?? r.origin
         var m = Message("pointer"); m.active = "mac"; m.x = min(1,max(0,(p.x-r.minX)/r.width)); m.y = min(1,max(0,(p.y-r.minY)/r.height))
@@ -300,13 +300,12 @@ final class FlowModel: ObservableObject {
             gameProtectionStatus=gameProtectionAvailable ? "按 Ctrl + Option + L 锁定 Windows":"更新 Windows 后可用"
             topology.windowsAspect = message.width! / message.height!
             updateTopology(); publishLayout()
-            let capsSync = message.features?.contains("caps-v1") == true
             input.peerSupportsTouchpad=message.features?.contains("touchpad-v1")==true
             input.peerReceivesTouchpad=message.features?.contains("touchpad-native-receive-v1")==true
             input.peerSupportsTouchpadFeedback=message.features?.contains("touchpad-feedback-v1")==true
             input.sendTouchpadSetting();updateTouchpadStatus()
-            input.peerSupportsCaps = capsSync
-            if capsSync { input.sendCapsState() }
+            input.windowsAcceptsCapsState=message.features?.contains("caps-v1")==true
+            input.sendCapsState()
             peerClipboard=message.features?.contains("clipboard-v1") == true
             startClipboardIfAllowed()
         case "touchpadControl": input.receive(message);updateTouchpadStatus()

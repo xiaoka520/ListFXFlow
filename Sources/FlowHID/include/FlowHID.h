@@ -7,10 +7,9 @@
 // Construction is separate from posting so tests never generate user input.
 typedef struct { uint32_t type, flags, options; NXEventData data; } FlowHIDKeyEvent;
 FlowHIDKeyEvent FlowHIDMakeKey(uint16_t code, bool down, bool modifier, bool repeated, uint32_t flags);
-FlowHIDKeyEvent FlowHIDMakeCapsNotification(bool down);
+FlowHIDKeyEvent FlowHIDMakePhysicalCaps(bool down);
 uint32_t FlowHIDOpen(void);
 void FlowHIDClose(uint32_t connection);
-bool FlowHIDSetCaps(uint32_t connection, bool enabled);
 bool FlowHIDPostKey(uint32_t connection, FlowHIDKeyEvent event);
 bool FlowPreLoginMarkerPresent(void);
 bool FlowEnableBackgroundCursorControl(void);

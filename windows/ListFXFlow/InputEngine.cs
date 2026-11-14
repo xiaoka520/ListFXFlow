@@ -142,7 +142,7 @@ public sealed class InputEngine : IDisposable
     private Message? outgoingPointer;
     private double outgoingScrollX,outgoingScrollY;
 
-    private bool enabled,injectionFailure,hasLocalPointer,capsSync,capsState,capsKeyHeld;
+    private bool enabled,injectionFailure,hasLocalPointer,capsState;
     private sealed record PointerEcho(int X,int Y,long At);
     private volatile PointerEcho? pointerEcho;
     private CursorShield? shield;
@@ -157,11 +157,11 @@ public sealed class InputEngine : IDisposable
         UpdateTouchpadStatus();
         if(!value) { queue.Clear(); Reset(); }
         else {
-            injectionFailure=false; capsState=(Native.GetKeyState(0x14)&1)!=0;
-            physicalKeys.Clear(); physicalButtons.Clear(); capsKeyHeld=false;
+            injectionFailure=false;capsState=(Native.GetKeyState(0x14)&1)!=0;
+            physicalKeys.Clear(); physicalButtons.Clear();
             foreach(var key in KeyMap.Entries) {
                 int vk=(int)Native.MapVirtualKey((uint)(key.Scan | (key.Extended ? 0xe000 : 0)),3);
-                if(key.Hid!=57 && vk!=0 && Native.GetAsyncKeyState(vk)<0) physicalKeys.Add(key.Hid);
+                if(vk!=0 && Native.GetAsyncKeyState(vk)<0) physicalKeys.Add(key.Hid);
             }
             int[] buttons=[1,2,4,5,6];
             for(int b=0;b<buttons.Length;b++) if(Native.GetAsyncKeyState(buttons[b])<0) physicalButtons.Add(b);
@@ -242,22 +242,12 @@ public sealed class InputEngine : IDisposable
             enabled=false; Reset(); Emergency?.Invoke(); return (IntPtr)1;
         }
         int scan=(int)k.Scan | ((k.Flags&1)!=0 ? 0x100 : 0);
-        // Caps Lock is a toggle. Let Windows apply the physical press (so the local
-        // LED follows) and broadcast the resulting state for the Mac to mirror.
-        if(KeyMap.ByScan.TryGetValue(scan,out var caps) && caps.Hid==57) {
-            FlushOutgoing();
-            if(down && !capsKeyHeld) {
-                capsKeyHeld=true;
-                capsState=!capsState;
-                if(capsSync) Send?.Invoke(new("caps") { Down=capsState });
-            }
-            if(!down) capsKeyHeld=false;
-            return Native.CallNextHookEx(keyboardHook,code,message,data);
-        }
         FinishWheel();
         if(KeyMap.ByScan.TryGetValue(scan,out var entry)) {
-            if(down) physicalKeys.Add(entry.Hid); else physicalKeys.Remove(entry.Hid);
-            if(Router.Active!="windows") { FlushOutgoing(); Send?.Invoke(new("key") { Key=entry.Hid,Down=down }); }
+            bool changed=down ? physicalKeys.Add(entry.Hid) : physicalKeys.Remove(entry.Hid);
+            if(entry.Hid==57 && down && changed && Router.Active=="windows") capsState=!capsState;
+            // Forward Caps as a press/release, never the Windows lock state.
+            if(Router.Active!="windows" && (entry.Hid!=57 || changed)) { FlushOutgoing(); Send?.Invoke(new("key") { Key=entry.Hid,Down=down }); }
         }
         return Router.Active!="windows" ? (IntPtr)1 : Native.CallNextHookEx(keyboardHook,code,message,data);
     }
@@ -362,7 +352,7 @@ public sealed class InputEngine : IDisposable
                 peerGestureReceiver=m.Features?.Contains("touchpad-quartz-receive-v1")==true;
                 AnnounceGestureSetting();RefreshTouchpadOwnership();UpdateTouchpadStatus();
                 peerGameMode=m.Features?.Contains("game-mode-v1")==true;ApplyGameProtection(force:true);
-                capsSync=m.Features?.Contains("caps-v1")==true; Router.Topology.MacAspect=m.Width!.Value/m.Height!.Value; PublishLayout(); break;
+                Router.Topology.MacAspect=m.Width!.Value/m.Height!.Value; PublishLayout(); break;
             case "gameModeRequest" when peerGameMode: SetManualGameProtection(m.Down!.Value);break;
             case "relativePointer" when peerGameMode && Router.Active=="windows" && Router.CrossingLocked:
                 InjectRelative(m.Dx!.Value,m.Dy!.Value);break;
@@ -397,14 +387,11 @@ public sealed class InputEngine : IDisposable
             case "touchpadFeedback" when ForwardGestures && Router.Active=="mac" && m.GestureEpoch==touchpadWorker.Epoch:
                 touchpadWorkerStatus=m.Phase=="unavailable" ? "Mac 无法生成系统手势事件" :$"Mac 已收 {m.Frames} 帧 / 已提交 {m.Events} 个事件（不代表系统已执行）";
                 UpdateTouchpadStatus();break;
-            case "caps": SetCaps(m.Down!.Value); break;
+            case "caps":
+                if(capsState!=m.Down!.Value) { capsState=m.Down.Value;KeyEvent(57,true);KeyEvent(57,false); }
+                break;
             case "reset": SetEnabled(false); OnControl?.Invoke(m); break;
         }
-    }
-    private void SetCaps(bool state) {
-        if(capsState==state) return;
-        capsState=state;
-        KeyEvent(57,true); KeyEvent(57,false);
     }
     private void StepWheel() {
         var delta=wheel.Take();
@@ -499,7 +486,7 @@ public sealed class InputEngine : IDisposable
                 foreach(int key in physicalKeys)Send?.Invoke(new("key") {Key=key,Down=false});
                 foreach(int button in physicalButtons)Send?.Invoke(new("button") {Button=button,Down=false});
             }
-            physicalKeys.Clear();physicalButtons.Clear();capsKeyHeld=false;gameShortcut.Reset();
+            physicalKeys.Clear();physicalButtons.Clear();gameShortcut.Reset();
             injectedKeys.Clear();injectedButtons.Clear();
             shield?.Hide();RefreshTouchpadOwnership();
             if(enabled)OnDesktopPause?.Invoke(true);
