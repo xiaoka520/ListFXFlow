@@ -1,9 +1,9 @@
-ListFXFlow 0.2.3 build 45 · Windows x64
+ListFXFlow 0.2.3 build 46 · Windows x64
 
-本构建为 0.2.3 build 45，未发布期间只增加构建号。关闭或最小化窗口后常驻系统托盘。滚轮固定使用精细增量，不额外生成动画；Windows 系统输入注入已拆到独立线程。真实双端滚动和移动手感仍需测试。
+本构建为 0.2.3 build 46，未发布期间只增加构建号。关闭或最小化窗口后常驻系统托盘。滚轮固定使用精细增量，不额外生成动画；Windows 系统输入注入已拆到独立线程。真实双端滚动和移动手感仍需测试。
 
-1. 运行 ListFXFlow-Setup-x64-0.2.3-b45.exe，按向导安装到当前用户，无需另装 .NET。安装器和应用均会请求管理员授权，以便控制管理员窗口。
-   也可解压 ListFXFlow-Windows-x64-0.2.3-b45.zip，直接运行 ListFXFlow.exe。
+1. 运行 ListFXFlow-Setup-x64-0.2.3-b46.exe，按向导安装到当前用户，无需另装 .NET。安装器和应用均会请求管理员授权，以便控制管理员窗口。
+   也可解压 ListFXFlow-Windows-x64-0.2.3-b46.zip，直接运行 ListFXFlow.exe。
 2. 用雷雳线直连 Mac，确认 Windows 出现 Thunderbolt / USB4 网络适配器。
 3. Mac 打开 ListFXFlow.app 后自动启用共享；若缺少权限，在向导中分别授权。Mac 应用常驻菜单栏。
 4. Windows 选择雷雳有线网卡，点击“连接 Mac”，不需要配对码。优先尝试保存的 Mac IP；留空时优先使用上次成功连接的地址，不可用再自动发现。手动 IP、网卡及成功连接地址会保存，已连接时不主动切换地址。

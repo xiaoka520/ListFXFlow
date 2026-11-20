@@ -48,7 +48,6 @@ internal static class Native
     [DllImport("user32.dll")] internal static extern bool SetWindowPos(IntPtr window,IntPtr after,int x,int y,int width,int height,uint flags);
     [DllImport("user32.dll")] internal static extern bool ShowWindow(IntPtr window,int command);
     [DllImport("user32.dll")] internal static extern IntPtr SetCursor(IntPtr cursor);
-    [DllImport("user32.dll",CharSet=CharSet.Unicode)] internal static extern IntPtr LoadCursor(IntPtr instance,IntPtr name);
     [DllImport("user32.dll")] internal static extern bool GetCursorPos(out Point point);
     [DllImport("user32.dll",SetLastError=true)] internal static extern bool SetCursorPos(int x,int y);
     [DllImport("user32.dll")] internal static extern IntPtr GetForegroundWindow();

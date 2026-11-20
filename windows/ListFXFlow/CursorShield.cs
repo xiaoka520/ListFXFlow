@@ -6,11 +6,13 @@ namespace ListFXFlow;
 /// input window, lifecycle and SDK backend.
 internal sealed class CursorShield : IDisposable
 {
+    private const uint CursorShowing=1, CursorSuppressed=2;
     private readonly Native.WindowProcedure procedure;
     public Action<Native.RawMouseInput,uint>? OnMouse;
     private IntPtr handle;
     private ushort windowClass;
     private bool registered,visible;
+    private nint cursorBeforeHide;
     private readonly string className="ListFXFlow.Cursor."+Guid.NewGuid().ToString("N");
     public CursorShield() {
         procedure=WindowProc;
@@ -25,16 +27,30 @@ internal sealed class CursorShield : IDisposable
         if(!registered) { int error=Marshal.GetLastWin32Error(); Dispose(); throw new System.ComponentModel.Win32Exception(error); }
     }
     public void Show() {
-        Native.SetWindowPos(handle,(IntPtr)(-1),0,0,Native.GetSystemMetrics(0),Native.GetSystemMetrics(1),0x50);
+        visible=Native.SetWindowPos(handle,(IntPtr)(-1),0,0,Native.GetSystemMetrics(0),Native.GetSystemMetrics(1),0x50);
+        if(!visible)return;
         // Swallowed low-level movement produces no WM_SETCURSOR. Hide immediately.
-        Native.SetCursor(IntPtr.Zero);
-        visible=true;
+        HideCursor();
     }
     public void Hide() {
         if(!visible) return;
         visible=false;
-        Native.SetCursor(Native.LoadCursor(IntPtr.Zero,(IntPtr)32512));
         if(handle!=IntPtr.Zero) Native.ShowWindow(handle,0);
+        nint restore=cursorBeforeHide;
+        cursorBeforeHide=0;
+        // Only undo our null cursor. Keep any shape a window has since set,
+        // and leave touch suppression and the game's display count alone.
+        if(restore!=0 && TryReadCursor(out var cursor) && cursor.Cursor==0 && (cursor.Flags&CursorSuppressed)==0)
+            Native.SetCursor(restore);
+    }
+    private static bool TryReadCursor(out Native.CursorInfo cursor) {
+        cursor=new() { Size=(uint)Marshal.SizeOf<Native.CursorInfo>() };
+        return Native.GetCursorInfo(ref cursor);
+    }
+    private void HideCursor() {
+        if(!TryReadCursor(out var cursor) || (cursor.Flags&(CursorShowing|CursorSuppressed))!=CursorShowing || cursor.Cursor==0)return;
+        cursorBeforeHide=cursor.Cursor;
+        Native.SetCursor(0);
     }
     private IntPtr WindowProc(IntPtr window,uint message,IntPtr wParam,IntPtr lParam) {
         if(message==0xff) {
@@ -45,7 +61,10 @@ internal sealed class CursorShield : IDisposable
                 OnMouse?.Invoke(data,unchecked((uint)Native.GetMessageTime()));
             // DefWindowProc performs the foreground raw-input cleanup.
         }
-        if(message==0x20 && visible) { Native.SetCursor(IntPtr.Zero); return (IntPtr)1; }
+        if(message==0x20) {
+            if(visible)HideCursor();
+            return (IntPtr)1;
+        }
         if(message==0x21) return (IntPtr)3; // MA_NOACTIVATE
         return Native.DefWindowProc(window,message,wParam,lParam);
     }

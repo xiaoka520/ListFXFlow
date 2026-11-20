@@ -49,7 +49,6 @@ internal sealed class TouchpadInputWindow : IDisposable {
     }
     internal bool Confirm() {
         Active=focus.Confirm();
-        if(Active)Native.SetCursor(0);
         return Active;
     }
     internal string ForegroundDescription { get { var foreground=Native.GetForegroundWindow();Native.GetWindowThreadProcessId(foreground,out uint pid);return $"foreground hwnd=0x{foreground:X} pid={pid}; input hwnd=0x{handle:X} pid={Environment.ProcessId}"; } }
@@ -57,6 +56,10 @@ internal sealed class TouchpadInputWindow : IDisposable {
         get { Native.GetWindowThreadProcessId(Native.GetForegroundWindow(),out uint pid);return Active && pid==(uint)Environment.ProcessId; }
     }
     private nint WindowProc(nint window,uint message,nint wParam,nint lParam) {
+        // The parent cursor shield owns visibility. A queued foreground
+        // transition can outlive its shield, so also suppress DefWindowProc's
+        // cursor change while this window is being prepared or released.
+        if(message==0x20)return 1; // WM_SETCURSOR
         if(Active) {
             if(TouchpadScroll.PromotePointer(true,message))PointerObserved?.Invoke();
             // DefWindowProc performs Windows' two-finger recognition and emits
@@ -73,7 +76,6 @@ internal sealed class TouchpadInputWindow : IDisposable {
             }
             if(message==0x319)return 0;
             if(message==0x119) { Native.CloseGestureInfoHandle(lParam);return 0; }
-            if(message==0x20) { Native.SetCursor(0);return 1; }
         }
         if(message==0x21)return 1;
         return Native.DefWindowProc(window,message,wParam,lParam);
